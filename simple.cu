@@ -6,7 +6,7 @@ Can profile with
 	nvprof .\simple.exe
 I had an issue with the profiler when I ran command line not as an admin.
 Had an error that mentioned something about permission and users
-	
+https://developer.nvidia.com/nvidia-development-tools-solutions-ERR_NVGPUCTRPERM-permission-issue-performance-counters	
 */
 #include <stdlib.h>
 #include <stdio.h>
