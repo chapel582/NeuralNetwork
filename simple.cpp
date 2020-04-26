@@ -4,6 +4,7 @@ NOTE: build with cl. run setup.bat first
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <time.h>
 
 void Add(int N, float* X, float* Y)
 {
@@ -25,7 +26,11 @@ int main(void)
 		Y[Index] = 2.0f;
 	}
 
+	clock_t Start;
+	Start = clock();
 	Add(N, X, Y);
+	clock_t Clicks = clock() - Start;
+	printf("Time to run: %f seconds\n", ((float) Clicks) / CLOCKS_PER_SEC);
 
 	float ExpectedValue = 3.0f;
 	for(int Index = 0; Index < N; Index++)
