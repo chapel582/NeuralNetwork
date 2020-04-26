@@ -15,7 +15,9 @@ https://developer.nvidia.com/nvidia-development-tools-solutions-ERR_NVGPUCTRPERM
 __global__
 void Add(int N, float* X, float* Y)
 {
-	for(int Index = 0; Index < N; Index++)
+	int Start = blockIdx.x * blockDim.x + threadIdx.x;
+	int Stride = blockDim.x * gridDim.x;
+	for(int Index = Start; Index < N; Index += Stride)
 	{
 		Y[Index] = X[Index] + Y[Index];
 	}
@@ -35,7 +37,9 @@ int main(void)
 		Y[Index] = 2.0f;
 	}
 
-	Add<<<1, 1>>>(N, X, Y);
+	int BlockSize = 256;
+	int NumBlocks = (N + BlockSize - 1) / BlockSize;
+	Add<<<NumBlocks, BlockSize>>>(N, X, Y);
 	cudaDeviceSynchronize();
 
 	float ExpectedValue = 3.0f;
@@ -51,49 +55,3 @@ int main(void)
 
 	return 0;
 }
-
-// #include <iostream>
-// #include <math.h>
-// #include <cuda_profiler_api.h>
-
-// // Kernel function to add the elements of two arrays
-// __global__
-// void add(int n, float *x, float *y)
-// {
-//   for (int i = 0; i < n; i++)
-//     y[i] = x[i] + y[i];
-// }
-
-// int main(void)
-// {
-//   int N = 1<<20;
-//   float *x, *y;
-
-//   // Allocate Unified Memory – accessible from CPU or GPU
-//   cudaMallocManaged(&x, N*sizeof(float));
-//   cudaMallocManaged(&y, N*sizeof(float));
-
-//   // initialize x and y arrays on the host
-//   for (int i = 0; i < N; i++) {
-//     x[i] = 1.0f;
-//     y[i] = 2.0f;
-//   }
-
-//   // Run kernel on 1M elements on the GPU
-//   add<<<1, 1>>>(N, x, y);
-
-//   // Wait for GPU to finish before accessing on host
-//   cudaDeviceSynchronize();
-
-//   // Check for errors (all values should be 3.0f)
-//   float maxError = 0.0f;
-//   for (int i = 0; i < N; i++)
-//     maxError = fmax(maxError, fabs(y[i]-3.0f));
-//   std::cout << "Max error: " << maxError << std::endl;
-
-//   // Free memory
-//   cudaFree(x);
-//   cudaFree(y);
-  
-//   return 0;
-// }
