@@ -5,3 +5,8 @@ struct vector
 	uint64_t length;
 	float* data;	
 };
+
+int main(void)
+{
+	
+}
