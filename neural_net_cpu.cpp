@@ -15,8 +15,6 @@ struct vector
 	float* Data;	
 };
 
-// TODO: operator overloading for accessing element of vector?
-
 float Dot(vector V1, vector V2)
 {
 	// TODO: should this be an assertion?
