@@ -29,8 +29,8 @@ void PropagateForward(
 	vector Input, weights Weights, vector Biases, vector* Output
 )
 {
-	int Start = 0; //blockIdx.x * blockDim.x + threadIdx.x;
-	int Stride = 1; //blockDim.x * gridDim.x;
+	int Start = threadIdx.x; //blockIdx.x * blockDim.x + threadIdx.x;
+	int Stride = blockDim.x; //blockDim.x * gridDim.x;
 	for(int Index = Start; Index < Weights.Length; Index += Stride)
 	{
 		float DotResult = 0.0;
@@ -111,7 +111,9 @@ int main(void)
 	vector* NextLayer = NULL;
 	InitCudaVector(&NextLayer, Weights->Length);
 
-	PropagateForward<<<1, 1>>>(*Inputs, *Weights, *Biases, NextLayer);
+	// NOTE: ThreadCount can't exceed the number of weights to process
+	int ThreadCount = (256 > Weights->Length) ? 256 : Weights->Length;
+	PropagateForward<<<1, ThreadCount>>>(*Inputs, *Weights, *Biases, NextLayer);
 	cudaDeviceSynchronize();
 	
 	// TODO: pull this out into print array
