@@ -29,11 +29,6 @@ void PropagateForward(
 	vector Input, weights Weights, vector Biases, vector* Output
 )
 {
-	ASSERT(
-		(Weights.Length == Output->Length) && 
-		(Weights.Length == Biases.Length) && 
-		(Output->Length == Biases.Length)
-	);
 	int Start = 0; //blockIdx.x * blockDim.x + threadIdx.x;
 	int Stride = 1; //blockDim.x * gridDim.x;
 	for(int Index = Start; Index < Weights.Length; Index += Stride)
@@ -114,6 +109,7 @@ int main(void)
 	vector* NextLayer = NULL;
 	InitCudaVector(&NextLayer, Weights->Length);
 	PropagateForward<<<1, 1>>>(*Inputs, *Weights, *Biases, NextLayer);
+	cudaDeviceSynchronize();
 	
 	// TODO: pull this out into print array
 	printf("[");
