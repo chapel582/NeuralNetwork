@@ -90,7 +90,7 @@ int main(void)
 	memcpy(
 		Weights->Vectors[0].Data,
 		&Weights1Data[0],
-		Weights->Vectors[0].Length
+		Weights->Vectors[0].Length * sizeof(float)
 	);
 	Weights->Vectors[1].Length = 4;
 	Weights->Vectors[1].Data = (
@@ -99,7 +99,7 @@ int main(void)
 	memcpy(
 		Weights->Vectors[1].Data,
 		&Weights2Data[0],
-		Weights->Vectors[1].Length
+		Weights->Vectors[1].Length * sizeof(float)
 	);
 	Weights->Vectors[2].Length = 4;
 	Weights->Vectors[2].Data = (
@@ -108,7 +108,7 @@ int main(void)
 	memcpy(
 		Weights->Vectors[2].Data,
 		&Weights3Data[0],
-		Weights->Vectors[2].Length
+		Weights->Vectors[2].Length * sizeof(float)
 	);
 
 	vector* NextLayer = NULL;
