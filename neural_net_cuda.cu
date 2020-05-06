@@ -41,7 +41,9 @@ void PropagateForward(
 			VectorIndex++
 		)
 		{
-			DotResult += Input.Data[Index] * WeightVector->Data[Index];
+			DotResult += (
+				Input.Data[VectorIndex] * WeightVector->Data[VectorIndex]
+			);
 		}
 		// TODO: parallelize vector addition?
 		Output->Data[Index] = DotResult + Biases.Data[Index]; 
@@ -108,6 +110,7 @@ int main(void)
 
 	vector* NextLayer = NULL;
 	InitCudaVector(&NextLayer, Weights->Length);
+
 	PropagateForward<<<1, 1>>>(*Inputs, *Weights, *Biases, NextLayer);
 	cudaDeviceSynchronize();
 	
