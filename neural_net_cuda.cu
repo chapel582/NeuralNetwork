@@ -1,14 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#define ARRAY_COUNT(Array) (sizeof(Array) / sizeof(Array[0]))
-#define ASSERT(Expression) if(!(Expression)) {*(int*) 0 = 0;}
-
-struct vector
-{
-	uint64_t Length;
-	float* Data;	
-};
+#include "neural_net_common.h"
 
 void InitCudaVector(vector** Result, int VectorLength)
 {
@@ -17,12 +10,6 @@ void InitCudaVector(vector** Result, int VectorLength)
 	Vector->Length = VectorLength;
 	Vector->Data = (float*) (((uint8_t*) Vector) + sizeof(vector));
 }
-
-struct weights
-{
-	uint64_t Length;
-	vector* Vectors;
-};
 
 __global__
 void PropagateForward(

@@ -1,19 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#define ARRAY_COUNT(Array) (sizeof(Array) / sizeof(Array[0]))
-#define ASSERT(Expression) if(!(Expression)) {*(int*) 0 = 0;}
-struct float_array
-{
-	uint64_t Length;
-	float* Data;
-};
-
-struct vector
-{
-	uint64_t Length;
-	float* Data;	
-};
+#include "neural_net_common.h"
 
 float Dot(vector V1, vector V2)
 {
@@ -27,14 +15,8 @@ float Dot(vector V1, vector V2)
 	return Result;
 }
 
-struct weights
-{
-	uint64_t Length;
-	vector* Data;
-};
-
 void PropagateForward(
-	vector Input, weights Weights, float_array Biases, vector* Output
+	vector Input, weights Weights, vector Biases, vector* Output
 )
 {
 	ASSERT(
@@ -45,7 +27,7 @@ void PropagateForward(
 	for(int Index = 0; Index < Weights.Length; Index++)
 	{
 		Output->Data[Index] = (
-			Dot(Input, Weights.Data[Index]) + Biases.Data[Index]
+			Dot(Input, Weights.Vectors[Index]) + Biases.Data[Index]
 		); 
 	}
 }
@@ -57,7 +39,7 @@ int main(void)
 	float Weights2Data[4] = {0.5f, -0.91f, 0.26f, -0.5f};
 	float Weights3Data[4] = {-0.26f, -0.27f, 0.17f, 0.87f};
 	float BiasData[3] = {2.0f, 3.0f, 0.5f};
-	float_array Biases = {};
+	vector Biases = {};
 	Biases.Length = ARRAY_COUNT(BiasData);
 	Biases.Data = &BiasData[0];
 
@@ -68,13 +50,13 @@ int main(void)
 	vector WeightsData[3];
 	weights Weights = {};
 	Weights.Length = ARRAY_COUNT(WeightsData);
-	Weights.Data = &WeightsData[0];
-	Weights.Data[0].Length = 4;
-	Weights.Data[0].Data = &Weights1Data[0];
-	Weights.Data[1].Length = 4;
-	Weights.Data[1].Data = &Weights2Data[0];
-	Weights.Data[2].Length = 4;
-	Weights.Data[2].Data = &Weights3Data[0];
+	Weights.Vectors = &WeightsData[0];
+	Weights.Vectors[0].Length = 4;
+	Weights.Vectors[0].Data = &Weights1Data[0];
+	Weights.Vectors[1].Length = 4;
+	Weights.Vectors[1].Data = &Weights2Data[0];
+	Weights.Vectors[2].Length = 4;
+	Weights.Vectors[2].Data = &Weights3Data[0];
 
 	float NextLayerData[3] = {0.0, 0.0, 0.0};
 	vector NextLayer = {};
