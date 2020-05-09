@@ -1,34 +1,49 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include "neural_net_common.h"
 
-float Dot(vector V1, vector V2)
-{
-	// TODO: should this be an assertion?
-	ASSERT(V1.Length == V2.Length);
-	float Result = 0.0;
-	for(int Index = 0; Index < V1.Length; Index++)
-	{
-		Result += V1.Data[Index] * V2.Data[Index];
-	}
-	return Result;
-}
+// TODO: finish CPU threading for matrix operations
+// TODO: figure out good error handling and thread-safe assertion scheme 
 
-void PropagateForward(
-	vector Input, weights Weights, vector Biases, vector* Output
+void DenseForward(
+	vector_array Inputs, weights Weights, vector Biases, vector_array* Outputs 
 )
 {
-	ASSERT(
-		(Weights.Length == Output->Length) && 
-		(Weights.Length == Biases.Length) && 
-		(Output->Length == Biases.Length)
-	);
-	for(int Index = 0; Index < Weights.Length; Index++)
+	// NOTE: this isn't too different from a matrix multiplication
+	// CONT: but I don't have to transpose anything
+	ASSERT(Inputs.Length == Outputs->Length);
+	ASSERT(Biases.Length == Weights.Length);
+	for(int Row = 0; Row < Inputs.Length; Row++)
 	{
-		Output->Data[Index] = (
-			Dot(Input, Weights.Vectors[Index]) + Biases.Data[Index]
-		); 
+		vector Input = Inputs.Vectors[Row];
+		vector* Output = &Outputs->Vectors[Row];
+		ASSERT(Output->Length == Weights.Length);
+		ASSERT(Output->Length == Biases.Length);
+		for(
+			int WeightIndex = 0;
+			WeightIndex < Weights.Length;
+			WeightIndex++
+		)
+		{
+			vector Weight = Weights.Vectors[WeightIndex];
+			ASSERT(Weight.Length == Input.Length);
+			Output->Data[WeightIndex] = 0.0f;
+			// NOTE: dot product between input and weights
+			for(
+				int VectorIndex = 0;
+				VectorIndex < Input.Length;
+				VectorIndex++
+			)
+			{
+				Output->Data[WeightIndex] += (
+					(Input.Data[VectorIndex] * Weight.Data[VectorIndex])
+				);
+			}
+			// NOTE: add bias
+			Output->Data[WeightIndex] += Biases.Data[WeightIndex];
+		}
 	}
 }
 
@@ -43,9 +58,11 @@ int main(void)
 	Biases.Length = ARRAY_COUNT(BiasData);
 	Biases.Data = &BiasData[0];
 
-	vector Inputs = {};
-	Inputs.Length = 4;
-	Inputs.Data = &InputsData[0];
+	vector_array Inputs = {};
+	Inputs.Length = 1;
+	Inputs.Vectors = (vector*) malloc(sizeof(vector) * Inputs.Length);
+	Inputs.Vectors[0].Length = 4;
+	Inputs.Vectors[0].Data = &InputsData[0];
 
 	vector WeightsData[3];
 	weights Weights = {};
@@ -58,19 +75,18 @@ int main(void)
 	Weights.Vectors[2].Length = 4;
 	Weights.Vectors[2].Data = &Weights3Data[0];
 
-	float NextLayerData[3] = {0.0, 0.0, 0.0};
-	vector NextLayer = {};
-	NextLayer.Length = ARRAY_COUNT(NextLayerData);
-	NextLayer.Data = &NextLayerData[0];
-	PropagateForward(Inputs, Weights, Biases, &NextLayer);
-	
-	// TODO: pull this out into print array
-	printf("[");
-	int Index;
-	for(Index = 0; Index < (NextLayer.Length - 1); Index++)
+	vector_array Outputs = {}; 
+	Outputs.Length = Inputs.Length;
+	Outputs.Vectors = (vector*) malloc(sizeof(vector) * Outputs.Length);
+	for(int OutputIndex = 0; OutputIndex < Outputs.Length; OutputIndex++)
 	{
-		printf("%f, ", NextLayer.Data[Index]);
+		Outputs.Vectors[OutputIndex].Length = Weights.Length;
+		Outputs.Vectors[OutputIndex].Data = (
+			(float*) malloc(sizeof(float) * Outputs.Vectors[0].Length)
+		);
 	}
-	printf("%f]\n", NextLayer.Data[Index]);
+	DenseForward(Inputs, Weights, Biases, &Outputs);
+	
+	PrintVectorArray(Outputs);
 	return 0;
 }
