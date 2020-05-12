@@ -16,7 +16,7 @@ void AllocVectorArray(
 	
 	// NOTE: we can potentially make this faster by making just one call to 
 	// CONT: malloc
-	Result->Vectors = (vector*) malloc(sizeof(vector) * Result->Length);
+	Result->Vectors = (vector*) malloc(Result->Length * sizeof(vector));
 	for(int ElementIndex = 0; ElementIndex < Result->Length; ElementIndex++)
 	{
 		Result->Vectors[ElementIndex].Length = VectorLength;
@@ -27,12 +27,6 @@ void AllocVectorArray(
 		memset(Result->Vectors[ElementIndex].Data, 0, VectorSize);
 	}
 }
-
-struct dense_layer
-{
-	weights Weights;
-	vector Biases;
-};
 
 void AllocLayerOutput(
 	uint64_t NumInputs, dense_layer Layer, vector_array* Result
@@ -50,14 +44,13 @@ void MakeDenseLayer(
 	weights* Weights = &DenseLayer->Weights;
 	Weights->Length = OutputDim;
 
-	// NOTE: we can probably make faster by making just one malloc call
-	Weights->Vectors = (vector*) malloc(sizeof(vector) * Weights->Length);
+	Weights->Vectors = (vector*) malloc(Weights->Length * sizeof(vector));
 	for(int VectorIndex = 0; VectorIndex < Weights->Length; VectorIndex++)
 	{
 		Weights->Vectors[VectorIndex].Length = InputDim;
 		Weights->Vectors[VectorIndex].Data = (
 			(float*) malloc(
-				sizeof(float) * Weights->Vectors[VectorIndex].Length
+				Weights->Vectors[VectorIndex].Length * sizeof(float)
 			)
 		);
 	}
@@ -66,7 +59,7 @@ void MakeDenseLayer(
 
 	vector* Biases = &DenseLayer->Biases;
 	Biases->Length = OutputDim;
-	Biases->Data = (float*) malloc(sizeof(float) * Biases->Length);
+	Biases->Data = (float*) malloc(Biases->Length * sizeof(float));
 	// TODO: we might want to initialize Biases->Data to be slightly greater 
 	// CONT: than zero by default to avoid dead networks
 }
@@ -119,6 +112,10 @@ int main(void)
 	/*
 	TODO: remove this silly temp data result reminder
 	[4.800000, 1.210000, 2.385000]
+	[8.900000, -1.810000, 0.200000]
+
+	[4.800000, -1.210000, 1.192500]
+	[8.900000, 1.810000, 0.100000]
 	*/
 	float Input1Data[4] = {1, 2, 3, 2.5};
 	float Input2Data[4] = {2.0f, 5.0f, -1.0f, 2.0f};

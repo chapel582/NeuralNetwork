@@ -38,5 +38,11 @@ void PrintVectorArray(vector_array VectorArray)
 
 typedef vector_array weights;
 
+struct dense_layer
+{
+	weights Weights;
+	vector Biases;
+};
+
 #define NEURAL_NET_COMMON_H
 #endif 
