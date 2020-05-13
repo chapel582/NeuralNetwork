@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "neural_net_common.h"
 
@@ -26,6 +27,15 @@ void AllocVectorArray(
 		Result->Vectors[ElementIndex].Data = (float*) malloc(VectorSize);
 		memset(Result->Vectors[ElementIndex].Data, 0, VectorSize);
 	}
+}
+
+inline void AllocVectorArraySameDim(
+	vector_array CopyDimFrom, vector_array* Result
+)
+{
+	return AllocVectorArray(
+		CopyDimFrom.Length, CopyDimFrom.Vectors[0].Length, Result
+	);
 }
 
 void AllocLayerOutput(
@@ -107,6 +117,45 @@ void DenseForward(
 	}
 }
 
+void ReluForward(vector_array Inputs, vector_array* Outputs)
+{
+	ASSERT(Inputs.Length == Outputs->Length);
+	for(int Row = 0; Row < Inputs.Length; Row++)
+	{
+		vector Input = Inputs.Vectors[Row];
+		vector* Output = &Outputs->Vectors[Row];
+		ASSERT(Input.Length == Output->Length);
+		for(int ElementIndex = 0; ElementIndex < Input.Length; ElementIndex++)
+		{
+			if(Input.Data[ElementIndex] < 0)
+			{
+				Output->Data[ElementIndex] = 0;
+			}
+			else
+			{
+				Output->Data[ElementIndex] = Input.Data[ElementIndex];
+			}
+		}
+	}
+}
+
+void SigmoidForward(vector_array Inputs, vector_array* Outputs)
+{
+	ASSERT(Inputs.Length == Outputs->Length);
+	for(int Row = 0; Row < Inputs.Length; Row++)
+	{
+		vector Input = Inputs.Vectors[Row];
+		vector* Output = &Outputs->Vectors[Row];
+		ASSERT(Input.Length == Output->Length);
+		for(int ElementIndex = 0; ElementIndex < Input.Length; ElementIndex++)
+		{
+			Output->Data[ElementIndex] = (float) (
+				1.0f / (1 + exp(-1 * Input.Data[ElementIndex]))
+			);
+		}
+	}
+}
+
 int main(void)
 {
 	/*
@@ -115,6 +164,9 @@ int main(void)
 	[8.900000, -1.810000, 0.200000]
 
 	[4.800000, -1.210000, 1.192500]
+	[8.900000, 1.810000, 0.100000]
+
+	[4.800000, 0.000000, 1.192500]
 	[8.900000, 1.810000, 0.100000]
 	*/
 	float Input1Data[4] = {1, 2, 3, 2.5};
@@ -191,5 +243,10 @@ int main(void)
 	PrintVectorArray(Layer1Outputs);
 	DenseForward(Layer1Outputs, Layer2, &Layer2Outputs);
 	PrintVectorArray(Layer2Outputs);
+	ReluForward(Layer2Outputs, &Layer2Outputs);
+	PrintVectorArray(Layer2Outputs);
+	SigmoidForward(Layer2Outputs, &Layer2Outputs);
+	PrintVectorArray(Layer2Outputs);
+	
 	return 0;
 }
