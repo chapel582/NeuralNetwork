@@ -66,7 +66,7 @@ int main(void)
 	GlobalPerformanceFrequency = PerformanceFrequency.QuadPart;
 
 	uint64_t NumElements = 100;
-	uint64_t NumArrays = 100000000;
+	uint64_t NumArrays = 1000000;
 
 	int64_t Start = GetWallClock();
 	uint8_t** ArrayOfArrays = (uint8_t**) malloc(NumArrays * sizeof(uint8_t*));
@@ -148,6 +148,30 @@ int main(void)
 	End = GetWallClock();
 	SecondsElapsed = GetSecondsElapsed(Start, End);
 	printf(
-		"Time to sum all elements of all arrays (flat): %f\n", SecondsElapsed
+		"Time to sum all elements of all arrays (flat), single access: %f\n",
+		SecondsElapsed
+	);
+
+	Sum = 0;
+	uint8_t* LastElement = GetElement(
+		FlatArrayOfArrays,
+		NumArrays - 1,
+		NumElements,
+		NumElements - 1
+	);
+	Start = GetWallClock();
+	for(
+		uint8_t* Element = GetArray(FlatArrayOfArrays, 0, NumElements);
+		Element <= LastElement;
+		Element++
+	)
+	{
+		Sum += *Element;
+	}
+	End = GetWallClock();
+	SecondsElapsed = GetSecondsElapsed(Start, End);
+	printf(
+		"Time to sum all elements of all arrays (flat), pointer movement: %f\n",
+		SecondsElapsed
 	);
 }
