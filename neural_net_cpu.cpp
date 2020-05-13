@@ -168,6 +168,9 @@ int main(void)
 
 	[4.800000, 0.000000, 1.192500]
 	[8.900000, 1.810000, 0.100000]
+
+	[0.991837, 0.500000, 0.767188]
+	[0.999864, 0.859362, 0.524979]
 	*/
 	float Input1Data[4] = {1, 2, 3, 2.5};
 	float Input2Data[4] = {2.0f, 5.0f, -1.0f, 2.0f};
@@ -247,6 +250,6 @@ int main(void)
 	PrintVectorArray(Layer2Outputs);
 	SigmoidForward(Layer2Outputs, &Layer2Outputs);
 	PrintVectorArray(Layer2Outputs);
-	
+
 	return 0;
 }

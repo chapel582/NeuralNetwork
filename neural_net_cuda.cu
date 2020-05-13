@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 
 #include "neural_net_common.h"
 
@@ -102,6 +103,51 @@ void DenseForward(
 	}
 }
 
+__global__
+void ReluForward(vector_array Inputs, vector_array* Outputs)
+{
+	// NOTE: this basically indexes by the thread index, offset by the block #
+	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	// NOTE: this basically calculates the # of threads
+	int Stride = blockDim.x * gridDim.x;
+	for(int Row = Start; Row < Inputs.Length; Row += Stride)
+	{
+		vector Input = Inputs.Vectors[Row];
+		vector* Output = &Outputs->Vectors[Row];
+		for(int ElementIndex = 0; ElementIndex < Input.Length; ElementIndex++)
+		{
+			if(Input.Data[ElementIndex] < 0)
+			{
+				Output->Data[ElementIndex] = 0;
+			}
+			else
+			{
+				Output->Data[ElementIndex] = Input.Data[ElementIndex];
+			}
+		}
+	}
+}
+
+__global__
+void SigmoidForward(vector_array Inputs, vector_array* Outputs)
+{
+	// NOTE: this basically indexes by the thread index, offset by the block #
+	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	// NOTE: this basically calculates the # of threads
+	int Stride = blockDim.x * gridDim.x;
+	for(int Row = Start; Row < Inputs.Length; Row += Stride)
+	{
+		vector Input = Inputs.Vectors[Row];
+		vector* Output = &Outputs->Vectors[Row];
+		for(int ElementIndex = 0; ElementIndex < Input.Length; ElementIndex++)
+		{
+			Output->Data[ElementIndex] = (float) (
+				1.0f / (1 + exp(-1 * Input.Data[ElementIndex]))
+			);
+		}
+	}
+}
+
 int main(void)
 {
 	float Input1Data[4] = {1, 2, 3, 2.5};
@@ -186,6 +232,14 @@ int main(void)
 	DenseForward<<<NumBlocks, BlockSize>>>(
 		*Layer1Outputs, *Layer2, Layer2Outputs
 	);
+	cudaDeviceSynchronize();
+	PrintVectorArray(*Layer2Outputs);
+
+	ReluForward<<<NumBlocks, BlockSize>>>(*Layer2Outputs, Layer2Outputs);
+	cudaDeviceSynchronize();
+	PrintVectorArray(*Layer2Outputs);
+
+	SigmoidForward<<<NumBlocks, BlockSize>>>(*Layer2Outputs, Layer2Outputs);
 	cudaDeviceSynchronize();
 	PrintVectorArray(*Layer2Outputs);
 	return 0;
