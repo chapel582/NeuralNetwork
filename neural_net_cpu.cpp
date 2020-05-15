@@ -6,134 +6,142 @@
 
 #include "neural_net_common.h"
 
+void AllocVector(uint64_t Length, vector** Result)
+{
+	*Result = (vector*) malloc(sizeof(vector));
+	vector* Vector = *Result;
+	Vector->Length = Length;
+	Vector->Data = (float*) malloc(GetVectorDataSize(*Vector));
+}
+
+void FreeVector(vector* Vector)
+{
+	free(Vector->Data);
+	free(Vector);
+}
+
 void AllocVectorArray(
-	uint64_t NumVectors, uint64_t VectorLength, vector_array* Result
+	uint64_t NumVectors, uint64_t VectorLength, vector_array** Result
 )
 {
 	// NOTE: not in common b/c it's in CPU memory, not shared memory with GPU
-	// NOTE: sets vector array values to 0 by default
+	*Result = (vector_array*) malloc(sizeof(vector_array));
+	vector_array* VectorArray = *Result;
+	VectorArray->Length = NumVectors;
+	VectorArray->VectorLength = VectorLength;
+	VectorArray->Vectors = (float*) malloc(
+		GetVectorArrayDataSize(*VectorArray)
+	);
+}
 
-	Result->Length = NumVectors;
-	
-	// NOTE: we can potentially make this faster by making just one call to 
-	// CONT: malloc
-	Result->Vectors = (vector*) malloc(Result->Length * sizeof(vector));
-	for(int ElementIndex = 0; ElementIndex < Result->Length; ElementIndex++)
-	{
-		Result->Vectors[ElementIndex].Length = VectorLength;
-		size_t VectorSize = (
-			sizeof(float) * Result->Vectors[ElementIndex].Length
-		);
-		Result->Vectors[ElementIndex].Data = (float*) malloc(VectorSize);
-		memset(Result->Vectors[ElementIndex].Data, 0, VectorSize);
-	}
+void FreeVectorArray(vector_array* VectorArray)
+{
+	free(VectorArray->Vectors);
+	free(VectorArray);
+}
+
+void MakeVectorArray(
+	uint64_t NumVectors, uint64_t VectorLength, vector_array** Result
+)
+{
+	AllocVectorArray(NumVectors, VectorLength, Result);
+	vector_array* VectorArray = *Result;
+	memset(VectorArray->Vectors, 0, GetVectorArrayDataSize(*VectorArray));
 }
 
 inline void AllocVectorArraySameDim(
-	vector_array CopyDimFrom, vector_array* Result
+	vector_array CopyDimFrom, vector_array** Result
 )
 {
 	return AllocVectorArray(
-		CopyDimFrom.Length, CopyDimFrom.Vectors[0].Length, Result
+		CopyDimFrom.Length, CopyDimFrom.VectorLength, Result
 	);
 }
 
 void AllocLayerOutput(
-	uint64_t NumInputs, dense_layer Layer, vector_array* Result
+	uint64_t NumInputs, dense_layer Layer, vector_array** Result
 )
 {
-	AllocVectorArray(NumInputs, Layer.Biases.Length, Result);
+	AllocVectorArray(NumInputs, Layer.Biases->Length, Result);
 }
 
 // TODO: finish CPU threading for matrix operations
 // TODO: figure out good error handling and thread-safe assertion scheme 
-void MakeDenseLayer(
-	int InputDim, int OutputDim, dense_layer* DenseLayer
+void AllocDenseLayer(
+	uint64_t InputDim, uint64_t OutputDim, dense_layer** Result
 )
 {
-	weights* Weights = &DenseLayer->Weights;
-	Weights->Length = OutputDim;
-
-	Weights->Vectors = (vector*) malloc(Weights->Length * sizeof(vector));
-	for(int VectorIndex = 0; VectorIndex < Weights->Length; VectorIndex++)
-	{
-		Weights->Vectors[VectorIndex].Length = InputDim;
-		Weights->Vectors[VectorIndex].Data = (
-			(float*) malloc(
-				Weights->Vectors[VectorIndex].Length * sizeof(float)
-			)
-		);
-	}
+	*Result = (dense_layer*) malloc(sizeof(dense_layer));
+	dense_layer* DenseLayer = *Result;	
+	
+	AllocVectorArray(OutputDim, InputDim, &DenseLayer->Weights);
 	// TODO: we might want to randomly initialize the weights to values 
-	// CONT: between -1 and 1
+	// CONT: between -1 and 1 in a "make" function
 
-	vector* Biases = &DenseLayer->Biases;
-	Biases->Length = OutputDim;
-	Biases->Data = (float*) malloc(Biases->Length * sizeof(float));
+	AllocVector(OutputDim, &DenseLayer->Biases);
 	// TODO: we might want to initialize Biases->Data to be slightly greater 
-	// CONT: than zero by default to avoid dead networks
+	// CONT: than zero by default to avoid dead networks in a "make" function
+}
+
+void FreeDenseLayer(dense_layer* DenseLayer)
+{
+	FreeVector(DenseLayer->Biases);
+	FreeVectorArray(DenseLayer->Weights);
+	free(DenseLayer);
 }
 
 void DenseForward(
-	vector_array Inputs, dense_layer DenseLayer, vector_array* Outputs 
+	vector_array Inputs, dense_layer DenseLayer, vector_array* Outputs
 )
 {
-	// NOTE: this isn't too different from a matrix multiplication
-	// CONT: but I don't have to transpose anything
-	weights Weights = DenseLayer.Weights;
-	vector Biases = DenseLayer.Biases;
+	// NOTE: we can probably save on copies here
+	weights* Weights = DenseLayer.Weights;
+	vector* Biases = DenseLayer.Biases;
+	float* BiasData = Biases->Data;
 
-	ASSERT(Inputs.Length == Outputs->Length);
-	ASSERT(Biases.Length == Weights.Length);
 	for(int Row = 0; Row < Inputs.Length; Row++)
 	{
-		vector Input = Inputs.Vectors[Row];
-		vector* Output = &Outputs->Vectors[Row];
-		ASSERT(Output->Length == Weights.Length);
-		ASSERT(Output->Length == Biases.Length);
-		for(
-			int WeightIndex = 0;
-			WeightIndex < Weights.Length;
-			WeightIndex++
-		)
+		// NOTE: we might be able to save on a copy here
+		float* Input = GetVector(Inputs, Row);
+		float* Output = GetVector(*Outputs, Row);
+		for(int WeightIndex = 0; WeightIndex < Weights->Length; WeightIndex++)
 		{
-			vector Weight = Weights.Vectors[WeightIndex];
-			ASSERT(Weight.Length == Input.Length);
-			Output->Data[WeightIndex] = 0.0f;
-			// NOTE: dot product between input and weights
+			float DotResult = 0.0;
+			float* WeightVector = GetVector(*Weights, WeightIndex);
 			for(
-				int VectorIndex = 0;
-				VectorIndex < Input.Length;
-				VectorIndex++
+				int ElementIndex = 0;
+				ElementIndex < Weights->VectorLength;
+				ElementIndex++
 			)
 			{
-				Output->Data[WeightIndex] += (
-					(Input.Data[VectorIndex] * Weight.Data[VectorIndex])
+				DotResult += (
+					Input[ElementIndex] * WeightVector[ElementIndex]
 				);
 			}
-			// NOTE: add bias
-			Output->Data[WeightIndex] += Biases.Data[WeightIndex];
+			Output[WeightIndex] = DotResult + BiasData[WeightIndex]; 
 		}
 	}
 }
 
 void ReluForward(vector_array Inputs, vector_array* Outputs)
 {
-	ASSERT(Inputs.Length == Outputs->Length);
 	for(int Row = 0; Row < Inputs.Length; Row++)
 	{
-		vector Input = Inputs.Vectors[Row];
-		vector* Output = &Outputs->Vectors[Row];
-		ASSERT(Input.Length == Output->Length);
-		for(int ElementIndex = 0; ElementIndex < Input.Length; ElementIndex++)
+		float* Input = GetVector(Inputs, Row);
+		float* Output = GetVector(*Outputs, Row);
+		for(
+			int ElementIndex = 0;
+			ElementIndex < Inputs.VectorLength;
+			ElementIndex++
+		)
 		{
-			if(Input.Data[ElementIndex] < 0)
+			if(Input[ElementIndex] < 0)
 			{
-				Output->Data[ElementIndex] = 0;
+				Output[ElementIndex] = 0;
 			}
 			else
 			{
-				Output->Data[ElementIndex] = Input.Data[ElementIndex];
+				Output[ElementIndex] = Input[ElementIndex];
 			}
 		}
 	}
@@ -141,16 +149,18 @@ void ReluForward(vector_array Inputs, vector_array* Outputs)
 
 void SigmoidForward(vector_array Inputs, vector_array* Outputs)
 {
-	ASSERT(Inputs.Length == Outputs->Length);
 	for(int Row = 0; Row < Inputs.Length; Row++)
 	{
-		vector Input = Inputs.Vectors[Row];
-		vector* Output = &Outputs->Vectors[Row];
-		ASSERT(Input.Length == Output->Length);
-		for(int ElementIndex = 0; ElementIndex < Input.Length; ElementIndex++)
+		float* Input = GetVector(Inputs, Row);
+		float* Output = GetVector(*Outputs, Row);
+		for(
+			int ElementIndex = 0;
+			ElementIndex < Inputs.VectorLength;
+			ElementIndex++
+		)
 		{
-			Output->Data[ElementIndex] = (float) (
-				1.0f / (1 + exp(-1 * Input.Data[ElementIndex]))
+			Output[ElementIndex] = (float) (
+				1.0f / (1 + exp(-1 * Input[ElementIndex]))
 			);
 		}
 	}
@@ -179,77 +189,87 @@ int main(void)
 	float Weights3Data[4] = {-0.26f, -0.27f, 0.17f, 0.87f};
 	float BiasData[3] = {2.0f, 3.0f, 0.5f};
 
-	vector_array Inputs = {};
+	vector_array* Inputs = NULL;
+	dense_layer* Layer1 = NULL;
+	dense_layer* Layer2 = NULL;
+	vector_array* Layer1Outputs = NULL;
+	vector_array* Layer2Outputs = NULL;	
+
 	AllocVectorArray(2, ARRAY_COUNT(Input1Data), &Inputs);
+	memcpy(GetVector(*Inputs, 0), &Input1Data[0], GetVectorDataSize(*Inputs));
+	memcpy(GetVector(*Inputs, 1), &Input2Data[0], GetVectorDataSize(*Inputs));
+
+	AllocDenseLayer(ARRAY_COUNT(Input1Data), ARRAY_COUNT(BiasData), &Layer1);
+	weights* Weights = Layer1->Weights;
 	memcpy(
-		Inputs.Vectors[0].Data,
-		&Input1Data[0],
-		Inputs.Vectors[0].Length * sizeof(float)
+		GetVector(*Weights, 0), &Weights1Data[0], GetVectorDataSize(*Weights)
 	);
 	memcpy(
-		Inputs.Vectors[1].Data,
-		&Input2Data[0],
-		Inputs.Vectors[1].Length * sizeof(float)
+		GetVector(*Weights, 1), &Weights2Data[0], GetVectorDataSize(*Weights)
+	);
+	memcpy(
+		GetVector(*Weights, 2), &Weights3Data[0], GetVectorDataSize(*Weights)
 	);
 
-	dense_layer Layer1 = {};
-	MakeDenseLayer(ARRAY_COUNT(Input1Data), ARRAY_COUNT(BiasData), &Layer1);
-	weights* Weights = &Layer1.Weights;
-	memcpy(
-		Weights->Vectors[0].Data,
-		&Weights1Data[0],
-		sizeof(float) * Weights->Vectors[0].Length
-	);
-	memcpy(
-		Weights->Vectors[1].Data,
-		&Weights2Data[0],
-		sizeof(float) * Weights->Vectors[1].Length
-	);
-	memcpy(
-		Weights->Vectors[2].Data,
-		&Weights3Data[0],
-		sizeof(float) * Weights->Vectors[2].Length
-	);
-	vector* Biases = &Layer1.Biases;
-	memcpy(Biases->Data, &BiasData, sizeof(float) * Biases->Length);
+	vector* Biases = Layer1->Biases;
+	memcpy(Biases->Data, &BiasData[0], Biases->Length);
 
 	float Layer2Weights1Data[3] = {1, 0, 0};
 	float Layer2Weights2Data[3] = {0, -1, 0};
 	float Layer2Weights3Data[3] = {0, 0, 0.5};
-	dense_layer Layer2 = {};
-	MakeDenseLayer(ARRAY_COUNT(BiasData), ARRAY_COUNT(BiasData), &Layer2);
-	Weights = &Layer2.Weights;
+	AllocDenseLayer(ARRAY_COUNT(BiasData), ARRAY_COUNT(BiasData), &Layer2);
+	Weights = Layer2->Weights;
 	memcpy(
-		Weights->Vectors[0].Data,
+		GetVector(*Weights, 0),
 		&Layer2Weights1Data[0],
-		sizeof(float) * Weights->Vectors[0].Length
+		GetVectorDataSize(*Weights)
 	);
 	memcpy(
-		Weights->Vectors[1].Data,
+		GetVector(*Weights, 1),
 		&Layer2Weights2Data[0],
-		sizeof(float) * Weights->Vectors[1].Length
+		GetVectorDataSize(*Weights)
 	);
 	memcpy(
-		Weights->Vectors[2].Data,
+		GetVector(*Weights, 2),
 		&Layer2Weights3Data[0],
-		sizeof(float) * Weights->Vectors[2].Length
+		GetVectorDataSize(*Weights)
 	);
-	Biases = &Layer2.Biases;
-	memset(Biases->Data, 0, sizeof(float) * Biases->Length);
+	Biases = Layer2->Biases;
+	memset(Biases->Data, 0, GetVectorDataSize(*Biases));
 
-	vector_array Layer1Outputs = {};
-	AllocLayerOutput(Inputs.Length, Layer1, &Layer1Outputs);
-	vector_array Layer2Outputs = {};	
-	AllocLayerOutput(Inputs.Length, Layer2, &Layer2Outputs);
+	AllocLayerOutput(Inputs->Length, *Layer1, &Layer1Outputs);
+	AllocLayerOutput(Inputs->Length, *Layer2, &Layer2Outputs);
 
-	DenseForward(Inputs, Layer1, &Layer1Outputs);
-	PrintVectorArray(Layer1Outputs);
-	DenseForward(Layer1Outputs, Layer2, &Layer2Outputs);
-	PrintVectorArray(Layer2Outputs);
-	ReluForward(Layer2Outputs, &Layer2Outputs);
-	PrintVectorArray(Layer2Outputs);
-	SigmoidForward(Layer2Outputs, &Layer2Outputs);
-	PrintVectorArray(Layer2Outputs);
+	DenseForward(*Inputs, *Layer1, Layer1Outputs);
+	PrintVectorArray(*Layer1Outputs);
+	DenseForward(*Layer1Outputs, *Layer2, Layer2Outputs);
+	PrintVectorArray(*Layer2Outputs);
+	ReluForward(*Layer2Outputs, Layer2Outputs);
+	PrintVectorArray(*Layer2Outputs);
+	SigmoidForward(*Layer2Outputs, Layer2Outputs);
+	PrintVectorArray(*Layer2Outputs);
 
+	// NOTE: for this test code, we don't need to free, but it's here if we need
+	// CONT: it and we might as well test it 
+	if(Inputs)
+	{
+		FreeVectorArray(Inputs);		
+	}
+	if(Layer1)
+	{
+		FreeDenseLayer(Layer1);
+	}
+	if(Layer2)
+	{
+		FreeDenseLayer(Layer2);
+	}	
+	if(Layer1Outputs)
+	{
+		FreeVectorArray(Layer1Outputs);
+	}
+	if(Layer2Outputs)
+	{
+		FreeVectorArray(Layer2Outputs);	
+	}
 	return 0;
 }
