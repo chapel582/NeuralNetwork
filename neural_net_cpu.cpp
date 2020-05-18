@@ -166,6 +166,28 @@ void SigmoidForward(vector_array Inputs, vector_array* Outputs)
 	}
 }
 
+void MakeSpiralData(
+	int PointsPerClass,
+	int Dimensions,
+	int NumClasses,
+	vector_array** InputsResults,
+	vector_array** OutputsResults
+)
+{
+	// NOTE: this is for testing only
+	// NOTE: based on https://cs231n.github.io/neural-networks-case-study/
+	// NOTE: data comes normalized already
+	AllocVectorArray(NumClasses * PointsPerClass, Dimensions, InputsResults);
+	MakeVectorArray(NumClasses * PointsPerClass, NumClasses, OutputsResults);
+	InitSpiralData(
+		PointsPerClass,
+		Dimensions,
+		NumClasses,
+		*InputsResults,
+		*OutputsResults
+	);
+}
+
 int main(void)
 {
 	/*
@@ -270,6 +292,41 @@ int main(void)
 	if(Layer2Outputs)
 	{
 		FreeVectorArray(Layer2Outputs);	
+	}
+
+	printf("\n");
+	vector_array* SpiralInputs = NULL;
+	vector_array* SpiralOutputs = NULL;
+	int PointsPerClass = 100;
+	int NumClasses = 3;
+	int Dimensions = 2;
+	MakeSpiralData(
+		PointsPerClass, Dimensions, NumClasses, &SpiralInputs, &SpiralOutputs
+	);
+	for(int ClassIndex = 0; ClassIndex < NumClasses; ClassIndex++)
+	{
+		for(int DataIndex = 0; DataIndex < SpiralInputs->Length; DataIndex++)
+		{
+			float* SpiralOutput = GetVector(*SpiralOutputs, DataIndex);
+			int Classification = ArgMax(
+				SpiralOutput, SpiralOutputs->VectorLength
+			);
+			if(Classification == ClassIndex)
+			{
+				float* SpiralInput = GetVector(*SpiralInputs, DataIndex); 
+				for(
+					int ElementIndex = 0;
+					ElementIndex < Dimensions;
+					ElementIndex++
+				)
+				{
+					printf("%f,", SpiralInput[ElementIndex]);
+				}
+				printf("%d", Classification);
+				printf("\n");
+			}
+		}
+		printf("\n\n");
 	}
 	return 0;
 }
