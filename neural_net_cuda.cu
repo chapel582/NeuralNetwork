@@ -81,6 +81,14 @@ void AllocCudaDenseLayer(
 	// CONT: than zero by default to avoid dead networks in a "make" function
 }
 
+void MakeCudaDenseLayer(
+	uint64_t InputDim, uint64_t OutputDim, dense_layer** Result
+)
+{
+	AllocCudaDenseLayer(InputDim, OutputDim, Result);
+	InitDenseLayer(*Result);
+}
+
 __global__
 void CudaDenseForward(
 	vector_array Inputs, dense_layer DenseLayer, vector_array* Outputs
@@ -299,6 +307,22 @@ int main(void)
 	SyncResult = cudaDeviceSynchronize();
 	ASSERT(SyncResult == cudaSuccess);	
 	PrintVectorArray(*Layer2Outputs);
+	printf("\n");
+
+	printf("RandInit test\n");
+	dense_layer* RandInitLayer = NULL;
+	MakeCudaDenseLayer(
+		ARRAY_COUNT(Input1Data), ARRAY_COUNT(BiasData), &RandInitLayer
+	);
+	vector_array* Layer3Outputs = NULL;
+	AllocCudaLayerOutput(Inputs->Length, *RandInitLayer, &Layer3Outputs);
+	CudaDenseForward<<<NumBlocks, BlockSize>>>(
+		*Inputs, *RandInitLayer, Layer3Outputs
+	);
+	SyncResult = cudaDeviceSynchronize();
+	ASSERT(SyncResult == cudaSuccess);
+	PrintVectorArray(*Layer3Outputs);
+	printf("\n");
 
 	printf("\n");
 	vector_array* SpiralInputs = NULL;

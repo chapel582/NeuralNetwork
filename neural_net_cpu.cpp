@@ -75,12 +75,16 @@ void AllocDenseLayer(
 	dense_layer* DenseLayer = *Result;	
 	
 	AllocVectorArray(OutputDim, InputDim, &DenseLayer->Weights);
-	// TODO: we might want to randomly initialize the weights to values 
-	// CONT: between -1 and 1 in a "make" function
-
+	
 	AllocVector(OutputDim, &DenseLayer->Biases);
-	// TODO: we might want to initialize Biases->Data to be slightly greater 
-	// CONT: than zero by default to avoid dead networks in a "make" function
+}
+
+void MakeDenseLayer(
+	uint64_t InputDim, uint64_t OutputDim, dense_layer** Result
+)
+{
+	AllocDenseLayer(InputDim, OutputDim, Result);
+	InitDenseLayer(*Result);
 }
 
 void FreeDenseLayer(dense_layer* DenseLayer)
@@ -270,6 +274,18 @@ int main(void)
 	PrintVectorArray(*Layer2Outputs);
 	SigmoidForward(*Layer2Outputs, Layer2Outputs);
 	PrintVectorArray(*Layer2Outputs);
+	printf("\n");
+
+	printf("RandInit test\n");
+	dense_layer* RandInitLayer = NULL;
+	MakeDenseLayer(
+		ARRAY_COUNT(Input1Data), ARRAY_COUNT(BiasData), &RandInitLayer
+	);
+	vector_array* Layer3Outputs = NULL;
+	AllocLayerOutput(Inputs->Length, *RandInitLayer, &Layer3Outputs);
+	DenseForward(*Inputs, *RandInitLayer, Layer3Outputs);
+	PrintVectorArray(*Layer3Outputs);
+	printf("\n");
 
 	// NOTE: for this test code, we don't need to free, but it's here if we need
 	// CONT: it and we might as well test it 

@@ -117,6 +117,12 @@ float RandFloat()
 	return ((float) rand()) / ((float) RAND_MAX);
 }
 
+float RandFloatRange(float Start, float Range)
+{
+	// NOTE: returns a float between Start to Start + Range (inclusive)
+	return (Range * RandFloat()) + Start;
+}
+
 float RandGaussian()
 {
 	// NOTE: returns a float based on a gaussian distribution centered at 0 
@@ -163,6 +169,27 @@ void InitSpiralData(
 			Theta += ThetaIncrement;
 			Radius += RadiusIncrement;
 		}
+	}
+}
+
+void InitDenseLayer(dense_layer* DenseLayer)
+{
+	weights* Weights = DenseLayer->Weights;
+	float* WeightArray = Weights->Vectors;
+	for(
+		int Index = 0; Index < (Weights->Length * Weights->VectorLength); Index++
+	)
+	{
+		WeightArray[Index] = RandFloatRange(-1, 2);
+	}
+
+	// NOTE: we initialize Biases->Data to be slightly greater 
+	// CONT: than zero by default to avoid dead networks
+	vector* Biases = DenseLayer->Biases;
+	float* BiasArray = Biases->Data;
+	for(int Index = 0; Index < Biases->Length; Index++)
+	{
+		BiasArray[Index] = 0.01f;
 	}
 }
 
