@@ -172,9 +172,9 @@ void SigmoidForward(vector_array Inputs, vector_array* Outputs)
 
 void SoftmaxForward(vector_array Inputs, vector_array* Outputs)
 {
-	float Sum = 0;
 	for(int Row = 0; Row < Inputs.Length; Row++)
 	{
+		float Sum = 0;
 		float* Input = GetVector(Inputs, Row);
 		float* Output = GetVector(*Outputs, Row);
 		for(
@@ -238,6 +238,9 @@ int main(void)
 
 	[
 	[0.659001, 0.242433, 0.098566]
+	]
+	[
+	[0.576117, 0.211942, 0.211942]
 	]
 	*/
 	float Input1Data[4] = {1, 2, 3, 2.5};
@@ -320,12 +323,18 @@ int main(void)
 	printf("\n");
 
 	printf("SoftmaxForward test\n");
-	float SoftmaxData[3] = {2.0, 1.0, 0.1};
+	float SoftmaxData[3] = {2.0f, 1.0f, 0.1f};
+	float SoftmaxData2[3] = {1.0f, 0.0f, 0.0f};
 	vector_array* SoftmaxForwardInputs = NULL;
-	AllocVectorArray(1, 3, &SoftmaxForwardInputs);
+	AllocVectorArray(2, 3, &SoftmaxForwardInputs);
 	memcpy(
 		GetVector(*SoftmaxForwardInputs, 0),
 		&SoftmaxData,
+		GetVectorDataSize(*SoftmaxForwardInputs)
+	);
+	memcpy(
+		GetVector(*SoftmaxForwardInputs, 1),
+		&SoftmaxData2,
 		GetVectorDataSize(*SoftmaxForwardInputs)
 	);
 	SoftmaxForward(*SoftmaxForwardInputs, SoftmaxForwardInputs);
