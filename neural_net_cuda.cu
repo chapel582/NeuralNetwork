@@ -180,6 +180,40 @@ void SigmoidForward(vector_array Inputs, vector_array* Outputs)
 	}
 }
 
+__global__
+void CudaSoftmaxForward(vector_array Inputs, vector_array* Outputs)
+{
+	// NOTE: this basically indexes by the thread index, offset by the block #
+	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	// NOTE: this basically calculates the # of threads
+	int Stride = blockDim.x * gridDim.x;
+
+	for(int Row = Start; Row < Inputs.Length; Row += Stride)
+	{
+		float Sum = 0;
+		float* Input = CudaGetVector(Inputs, Row);
+		float* Output = CudaGetVector(*Outputs, Row);
+		for(
+			int ElementIndex = 0;
+			ElementIndex < Inputs.VectorLength;
+			ElementIndex++
+		)
+		{
+			Input[ElementIndex] = (float) exp(Input[ElementIndex]);
+			Sum += Input[ElementIndex];
+		}
+
+		for(
+			int ElementIndex = 0;
+			ElementIndex < Inputs.VectorLength;
+			ElementIndex++
+		)
+		{
+			Output[ElementIndex] = Input[ElementIndex] / Sum;
+		}
+	}
+}
+
 void MakeCudaSpiralData(
 	int PointsPerClass,
 	int Dimensions,
@@ -221,6 +255,13 @@ int main(void)
 
 	[0.991837, 0.500000, 0.767188]
 	[0.999864, 0.859362, 0.524979]
+
+	[
+	[0.659001, 0.242433, 0.098566]
+	]
+	[
+	[0.576117, 0.211942, 0.211942]
+	]
 	*/
 	float Input1Data[4] = {1, 2, 3, 2.5};
 	float Input2Data[4] = {2.0f, 5.0f, -1.0f, 2.0f};
@@ -322,6 +363,29 @@ int main(void)
 	SyncResult = cudaDeviceSynchronize();
 	ASSERT(SyncResult == cudaSuccess);
 	PrintVectorArray(*Layer3Outputs);
+	printf("\n");
+
+	printf("SoftmaxForward test\n");
+	float SoftmaxData[3] = {2.0f, 1.0f, 0.1f};
+	float SoftmaxData2[3] = {1.0f, 0.0f, 0.0f};
+	vector_array* SoftmaxForwardInputs = NULL;
+	AllocCudaVectorArray(2, 3, &SoftmaxForwardInputs);
+	memcpy(
+		GetVector(*SoftmaxForwardInputs, 0),
+		&SoftmaxData,
+		GetVectorDataSize(*SoftmaxForwardInputs)
+	);
+	memcpy(
+		GetVector(*SoftmaxForwardInputs, 1),
+		&SoftmaxData2,
+		GetVectorDataSize(*SoftmaxForwardInputs)
+	);
+	CudaSoftmaxForward<<<NumBlocks, BlockSize>>>(
+		*SoftmaxForwardInputs, SoftmaxForwardInputs
+	);
+	SyncResult = cudaDeviceSynchronize();
+	ASSERT(SyncResult == cudaSuccess);
+	PrintVectorArray(*SoftmaxForwardInputs);
 	printf("\n");
 
 	printf("\n");
