@@ -170,6 +170,34 @@ void SigmoidForward(vector_array Inputs, vector_array* Outputs)
 	}
 }
 
+void SoftmaxForward(vector_array Inputs, vector_array* Outputs)
+{
+	float Sum = 0;
+	for(int Row = 0; Row < Inputs.Length; Row++)
+	{
+		float* Input = GetVector(Inputs, Row);
+		float* Output = GetVector(*Outputs, Row);
+		for(
+			int ElementIndex = 0;
+			ElementIndex < Inputs.VectorLength;
+			ElementIndex++
+		)
+		{
+			Input[ElementIndex] = (float) exp(Input[ElementIndex]);
+			Sum += Input[ElementIndex];
+		}
+
+		for(
+			int ElementIndex = 0;
+			ElementIndex < Inputs.VectorLength;
+			ElementIndex++
+		)
+		{
+			Output[ElementIndex] = Input[ElementIndex] / Sum;
+		}
+	}
+}
+
 void MakeSpiralData(
 	int PointsPerClass,
 	int Dimensions,
@@ -207,6 +235,10 @@ int main(void)
 
 	[0.991837, 0.500000, 0.767188]
 	[0.999864, 0.859362, 0.524979]
+
+	[
+	[0.659001, 0.242433, 0.098566]
+	]
 	*/
 	float Input1Data[4] = {1, 2, 3, 2.5};
 	float Input2Data[4] = {2.0f, 5.0f, -1.0f, 2.0f};
@@ -287,6 +319,19 @@ int main(void)
 	PrintVectorArray(*Layer3Outputs);
 	printf("\n");
 
+	printf("SoftmaxForward test\n");
+	float SoftmaxData[3] = {2.0, 1.0, 0.1};
+	vector_array* SoftmaxForwardInputs = NULL;
+	AllocVectorArray(1, 3, &SoftmaxForwardInputs);
+	memcpy(
+		GetVector(*SoftmaxForwardInputs, 0),
+		&SoftmaxData,
+		GetVectorDataSize(*SoftmaxForwardInputs)
+	);
+	SoftmaxForward(*SoftmaxForwardInputs, SoftmaxForwardInputs);
+	PrintVectorArray(*SoftmaxForwardInputs);
+	printf("\n");
+
 	// NOTE: for this test code, we don't need to free, but it's here if we need
 	// CONT: it and we might as well test it 
 	if(Inputs)
@@ -308,6 +353,10 @@ int main(void)
 	if(Layer2Outputs)
 	{
 		FreeVectorArray(Layer2Outputs);	
+	}
+	if(Layer3Outputs)
+	{
+		FreeVectorArray(Layer3Outputs);
 	}
 
 	printf("\n");
