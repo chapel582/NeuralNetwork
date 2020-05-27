@@ -273,7 +273,7 @@ DWORD WINAPI ThreadSigmoidForward(void* VoidArgs)
 			);
 		}
 	}
-	
+
 	return 0;
 }
 
@@ -306,9 +306,23 @@ void SigmoidForward(
 	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
 }
 
-void SoftmaxForward(vector_array Inputs, vector_array* Outputs)
+struct thread_softmax_forward_args
 {
-	for(int Row = 0; Row < Inputs.Length; Row++)
+	vector_array Inputs;
+	vector_array* Outputs;
+	int Start;
+	int Stride;
+};
+
+DWORD WINAPI ThreadSoftmaxForward(void* VoidArgs)
+{
+	thread_softmax_forward_args* Args = (thread_softmax_forward_args*) VoidArgs;
+	vector_array Inputs = Args->Inputs;
+	vector_array* Outputs = Args->Outputs;
+	int Start = Args->Start;
+	int Stride = Args->Stride;
+
+	for(int Row = Start; Row < Inputs.Length; Row += Stride)
 	{
 		float Sum = 0;
 		float* Input = GetVector(Inputs, Row);
@@ -332,6 +346,35 @@ void SoftmaxForward(vector_array Inputs, vector_array* Outputs)
 			Output[ElementIndex] = Input[ElementIndex] / Sum;
 		}
 	}
+	return 0;
+}
+
+void SoftmaxForward(
+	vector_array Inputs,
+	vector_array* Outputs,
+	HANDLE* ThreadHandles,
+	int NumThreads,
+	thread_softmax_forward_args* ThreadArgs
+)
+{
+	for(int Index = 0; Index < NumThreads; Index++)
+	{
+		DWORD ThreadId;
+		thread_softmax_forward_args* Args = &ThreadArgs[Index];
+		Args->Inputs = Inputs;
+		Args->Outputs = Outputs;
+		Args->Start = Index;
+		Args->Stride = NumThreads;
+		ThreadHandles[Index] = CreateThread( 
+			NULL, // default security attributes
+			0, // use default stack size  
+			ThreadSoftmaxForward, // thread function name
+			Args, // argument to thread function 
+			0, // use default creation flags 
+			&ThreadId // returns the thread identifier
+		);
+	}
+	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
 }
 
 void MakeSpiralData(
@@ -394,6 +437,10 @@ int main(void)
 	thread_sigmoid_forward_args* SigmoidForwardArgs = (
 		(thread_sigmoid_forward_args*) 
 		malloc(NumThreads * sizeof(thread_sigmoid_forward_args))
+	);
+	thread_softmax_forward_args* SoftmaxForwardArgs = (
+		(thread_softmax_forward_args*) 
+		malloc(NumThreads * sizeof(thread_softmax_forward_args))
 	);
 
 	float Input1Data[4] = {1, 2, 3, 2.5};
@@ -523,7 +570,13 @@ int main(void)
 		&SoftmaxData2,
 		GetVectorDataSize(*SoftmaxForwardInputs)
 	);
-	SoftmaxForward(*SoftmaxForwardInputs, SoftmaxForwardInputs);
+	SoftmaxForward(
+		*SoftmaxForwardInputs,
+		SoftmaxForwardInputs,
+		ThreadHandles,
+		NumThreads,
+		SoftmaxForwardArgs
+	);
 	PrintVectorArray(*SoftmaxForwardInputs);
 	printf("\n");
 
