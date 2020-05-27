@@ -173,9 +173,23 @@ void DenseForward(
 	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
 }
 
-void ReluForward(vector_array Inputs, vector_array* Outputs)
+struct thread_relu_forward_args
 {
-	for(int Row = 0; Row < Inputs.Length; Row++)
+	vector_array Inputs;
+	vector_array* Outputs;
+	int Start;
+	int Stride;
+};
+
+DWORD WINAPI ThreadReluForward(void* VoidArgs)
+{
+	thread_relu_forward_args* Args = (thread_relu_forward_args*) VoidArgs;
+	vector_array Inputs = Args->Inputs;
+	vector_array* Outputs = Args->Outputs;
+	int Start = Args->Start;
+	int Stride = Args->Stride;
+
+	for(int Row = Start; Row < Inputs.Length; Row += Stride)
 	{
 		float* Input = GetVector(Inputs, Row);
 		float* Output = GetVector(*Outputs, Row);
@@ -195,6 +209,37 @@ void ReluForward(vector_array Inputs, vector_array* Outputs)
 			}
 		}
 	}
+
+	return 0;
+}
+
+void ReluForward(
+	vector_array Inputs,
+	vector_array* Outputs,
+	HANDLE* ThreadHandles,
+	int NumThreads,
+	thread_relu_forward_args* ThreadArgs
+)
+{
+	// NOTE: only works for windows right now
+	for(int Index = 0; Index < NumThreads; Index++)
+	{
+		DWORD ThreadId;
+		thread_relu_forward_args* Args = &ThreadArgs[Index];
+		Args->Inputs = Inputs;
+		Args->Outputs = Outputs;
+		Args->Start = Index;
+		Args->Stride = NumThreads;
+		ThreadHandles[Index] = CreateThread( 
+			NULL, // default security attributes
+			0, // use default stack size  
+			ThreadReluForward, // thread function name
+			Args, // argument to thread function 
+			0, // use default creation flags 
+			&ThreadId // returns the thread identifier
+		);
+	}
+	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
 }
 
 void SigmoidForward(vector_array Inputs, vector_array* Outputs)
@@ -298,6 +343,9 @@ int main(void)
 	thread_dense_forward_args* DenseForwardArgs = (thread_dense_forward_args*) (
 		malloc(NumThreads * sizeof(thread_dense_forward_args))
 	);
+	thread_relu_forward_args* ReluForwardArgs = (thread_relu_forward_args*) (
+		malloc(NumThreads * sizeof(thread_relu_forward_args))
+	);
 
 	float Input1Data[4] = {1, 2, 3, 2.5};
 	float Input2Data[4] = {2.0f, 5.0f, -1.0f, 2.0f};
@@ -375,7 +423,13 @@ int main(void)
 		DenseForwardArgs
 	);
 	PrintVectorArray(*Layer2Outputs);
-	ReluForward(*Layer2Outputs, Layer2Outputs);
+	ReluForward(
+		*Layer2Outputs,
+		Layer2Outputs,
+		ThreadHandles,
+		NumThreads,
+		ReluForwardArgs
+	);
 	PrintVectorArray(*Layer2Outputs);
 	SigmoidForward(*Layer2Outputs, Layer2Outputs);
 	PrintVectorArray(*Layer2Outputs);
