@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+// TODO: Need to have a platform independent way of handling threads
+#include <windows.h>
 
 #include "neural_net_common.h"
 
@@ -94,16 +96,28 @@ void FreeDenseLayer(dense_layer* DenseLayer)
 	free(DenseLayer);
 }
 
-void DenseForward(
-	vector_array Inputs, dense_layer DenseLayer, vector_array* Outputs
-)
+struct thread_dense_forward_args
 {
-	// NOTE: we can probably save on copies here
+	vector_array Inputs;
+	dense_layer DenseLayer;
+	vector_array* Outputs;
+	int Start;
+	int Stride;
+};
+
+DWORD WINAPI ThreadDenseForward(void* VoidArgs)
+{
+	thread_dense_forward_args* Args = (thread_dense_forward_args*) VoidArgs;
+	vector_array Inputs = Args->Inputs;
+	dense_layer DenseLayer = Args->DenseLayer;
+	vector_array* Outputs = Args->Outputs;
 	weights* Weights = DenseLayer.Weights;
 	vector* Biases = DenseLayer.Biases;
 	float* BiasData = Biases->Data;
+	int Start = Args->Start;
+	int Stride = Args->Stride;
 
-	for(int Row = 0; Row < Inputs.Length; Row++)
+	for(int Row = Start; Row < Inputs.Length; Row += Stride)
 	{
 		// NOTE: we might be able to save on a copy here
 		float* Input = GetVector(Inputs, Row);
@@ -125,6 +139,38 @@ void DenseForward(
 			Output[WeightIndex] = DotResult + BiasData[WeightIndex]; 
 		}
 	}
+	return 0;
+}
+
+void DenseForward(
+	vector_array Inputs,
+	dense_layer DenseLayer,
+	vector_array* Outputs,
+	HANDLE* ThreadHandles,
+	int NumThreads,
+	thread_dense_forward_args* ThreadArgs
+)
+{
+	// NOTE: only works for windows right now
+	for(int Index = 0; Index < NumThreads; Index++)
+	{
+		DWORD ThreadId;
+		thread_dense_forward_args* Args = &ThreadArgs[Index];
+		Args->Inputs = Inputs;
+		Args->DenseLayer = DenseLayer;
+		Args->Outputs = Outputs;
+		Args->Start = Index;
+		Args->Stride = NumThreads;
+		ThreadHandles[Index] = CreateThread( 
+			NULL, // default security attributes
+			0, // use default stack size  
+			ThreadDenseForward, // thread function name
+			Args, // argument to thread function 
+			0, // use default creation flags 
+			&ThreadId // returns the thread identifier
+		);
+	}
+	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
 }
 
 void ReluForward(vector_array Inputs, vector_array* Outputs)
@@ -243,6 +289,16 @@ int main(void)
 	[0.576117, 0.211942, 0.211942]
 	]
 	*/
+
+	// NOTE: set up thread stuff so we don't have to do it on every layer of
+	// NOTE: the forward pass
+	// TODO: turn this into a function
+	int NumThreads = 4;
+	HANDLE* ThreadHandles = (HANDLE*) malloc(NumThreads * sizeof(HANDLE)); 
+	thread_dense_forward_args* DenseForwardArgs = (thread_dense_forward_args*) (
+		malloc(NumThreads * sizeof(thread_dense_forward_args))
+	);
+
 	float Input1Data[4] = {1, 2, 3, 2.5};
 	float Input2Data[4] = {2.0f, 5.0f, -1.0f, 2.0f};
 	float Weights1Data[4] = {0.2f, 0.8f, -0.5f, 1.0f};
@@ -273,7 +329,7 @@ int main(void)
 	);
 
 	vector* Biases = Layer1->Biases;
-	memcpy(Biases->Data, &BiasData[0], Biases->Length);
+	memcpy(Biases->Data, &BiasData[0], GetVectorDataSize(*Biases));
 
 	float Layer2Weights1Data[3] = {1, 0, 0};
 	float Layer2Weights2Data[3] = {0, -1, 0};
@@ -301,9 +357,23 @@ int main(void)
 	AllocLayerOutput(Inputs->Length, *Layer1, &Layer1Outputs);
 	AllocLayerOutput(Inputs->Length, *Layer2, &Layer2Outputs);
 
-	DenseForward(*Inputs, *Layer1, Layer1Outputs);
+	DenseForward(
+		*Inputs,
+		*Layer1,
+		Layer1Outputs,
+		ThreadHandles,
+		NumThreads,
+		DenseForwardArgs
+	);
 	PrintVectorArray(*Layer1Outputs);
-	DenseForward(*Layer1Outputs, *Layer2, Layer2Outputs);
+	DenseForward(
+		*Layer1Outputs,
+		*Layer2,
+		Layer2Outputs,
+		ThreadHandles,
+		NumThreads,
+		DenseForwardArgs
+	);
 	PrintVectorArray(*Layer2Outputs);
 	ReluForward(*Layer2Outputs, Layer2Outputs);
 	PrintVectorArray(*Layer2Outputs);
@@ -318,7 +388,14 @@ int main(void)
 	);
 	vector_array* Layer3Outputs = NULL;
 	AllocLayerOutput(Inputs->Length, *RandInitLayer, &Layer3Outputs);
-	DenseForward(*Inputs, *RandInitLayer, Layer3Outputs);
+	DenseForward(
+		*Inputs,
+		*RandInitLayer,
+		Layer3Outputs,
+		ThreadHandles,
+		NumThreads,
+		DenseForwardArgs
+	);
 	PrintVectorArray(*Layer3Outputs);
 	printf("\n");
 
@@ -368,6 +445,7 @@ int main(void)
 		FreeVectorArray(Layer3Outputs);
 	}
 
+#if 0
 	printf("\n");
 	vector_array* SpiralInputs = NULL;
 	vector_array* SpiralOutputs = NULL;
@@ -402,5 +480,6 @@ int main(void)
 		}
 		printf("\n\n");
 	}
+#endif 
 	return 0;
 }
