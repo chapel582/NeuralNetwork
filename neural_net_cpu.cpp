@@ -377,6 +377,78 @@ void SoftmaxForward(
 	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
 }
 
+struct thread_mse_args
+{
+	vector_array Predictions;
+	vector_array Labels;
+	float Result;
+	int Start;
+	int Stride;
+};
+
+DWORD WINAPI ThreadMse(void* VoidArgs)
+{
+	thread_mse_args* Args = (thread_mse_args*) VoidArgs;
+	vector_array Predictions = Args->Predictions;
+	vector_array Labels = Args->Labels;
+	float* Result = &Args->Result;
+	int Start = Args->Start;
+	int Stride = Args->Stride;
+
+	for(int Row = Start; Row < Predictions.Length; Row += Stride)
+	{
+		float* Prediction = GetVector(Predictions, Row);
+		float* Label = GetVector(Labels, Row);
+		for(
+			int ElementIndex = 0;
+			ElementIndex < Predictions.VectorLength;
+			ElementIndex++
+		)
+		{
+			*Result += (float) pow(
+				Label[ElementIndex] - Prediction[ElementIndex], 2
+			);
+		}
+	}
+	return 0;
+}
+
+float MeanSquaredError(
+	vector_array Predictions,
+	vector_array Labels,
+	HANDLE* ThreadHandles,
+	int NumThreads,
+	thread_mse_args* ThreadArgs
+)
+{
+	for(int Index = 0; Index < NumThreads; Index++)
+	{
+		DWORD ThreadId;
+		thread_mse_args* Args = &ThreadArgs[Index];
+		Args->Labels = Labels;
+		Args->Predictions = Predictions;
+		Args->Result = 0.0f;
+		Args->Start = Index;
+		Args->Stride = NumThreads;
+		ThreadHandles[Index] = CreateThread( 
+			NULL, // default security attributes
+			0, // use default stack size  
+			ThreadMse, // thread function name
+			Args, // argument to thread function 
+			0, // use default creation flags 
+			&ThreadId // returns the thread identifier
+		);
+	}
+	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
+	float Sum = 0;
+	for(int Index = 0; Index < NumThreads; Index++)
+	{
+		thread_mse_args* Args = &ThreadArgs[Index];
+		Sum += Args->Result;
+	}
+	return (Sum / (float) Predictions.Length);
+}
+
 void MakeSpiralData(
 	int PointsPerClass,
 	int Dimensions,
@@ -442,6 +514,9 @@ int main(void)
 		(thread_softmax_forward_args*) 
 		malloc(NumThreads * sizeof(thread_softmax_forward_args))
 	);
+	thread_mse_args* MseArgs = (thread_mse_args*) (
+		malloc(NumThreads * sizeof(thread_mse_args))
+	);
 
 	float Input1Data[4] = {1, 2, 3, 2.5};
 	float Input2Data[4] = {2.0f, 5.0f, -1.0f, 2.0f};
@@ -498,6 +573,15 @@ int main(void)
 	Biases = Layer2->Biases;
 	memset(Biases->Data, 0, GetVectorDataSize(*Biases));
 
+	vector_array* Labels = NULL;
+	AllocVectorArray(2, 3, &Labels);
+	float* Label = GetVector(*Labels, 0);
+	memset(Label, 0, GetVectorDataSize(*Labels));
+	Label[0] = 1.0f;
+	Label = GetVector(*Labels, 1);
+	memset(Label, 0, GetVectorDataSize(*Labels));
+	Label[1] = 1.0f;
+	
 	AllocLayerOutput(Inputs->Length, *Layer1, &Layer1Outputs);
 	AllocLayerOutput(Inputs->Length, *Layer2, &Layer2Outputs);
 
@@ -535,6 +619,14 @@ int main(void)
 		SigmoidForwardArgs
 	);
 	PrintVectorArray(*Layer2Outputs);
+	float MseResult = MeanSquaredError(
+		*Layer2Outputs,
+		*Labels,
+		ThreadHandles,
+		NumThreads,
+		MseArgs
+	);
+	printf("%f\n", MseResult);
 	printf("\n");
 
 	printf("RandInit test\n");
