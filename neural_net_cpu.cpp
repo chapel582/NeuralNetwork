@@ -449,6 +449,79 @@ float MeanSquaredError(
 	return (Sum / (float) Predictions.Length);
 }
 
+struct thread_cross_entropy_args
+{
+	vector_array Predictions;
+	vector_array Labels;
+	float Result;
+	int Start;
+	int Stride;
+};
+
+DWORD WINAPI ThreadCrossEntropy(void* VoidArgs)
+{
+	thread_cross_entropy_args* Args = (thread_cross_entropy_args*) VoidArgs;
+	vector_array Predictions = Args->Predictions;
+	vector_array Labels = Args->Labels;
+	float* Result = &Args->Result;
+	int Start = Args->Start;
+	int Stride = Args->Stride;
+
+	for(int Row = Start; Row < Predictions.Length; Row += Stride)
+	{
+		float* Prediction = GetVector(Predictions, Row);
+		float* Label = GetVector(Labels, Row);
+		for(
+			int ElementIndex = 0;
+			ElementIndex < Predictions.VectorLength;
+			ElementIndex++
+		)
+		{
+			*Result += (float) (
+				Label[ElementIndex] * log(Prediction[ElementIndex])
+			);
+		}
+	}
+	*Result = -1 * (*Result);
+	return 0;
+}
+
+float CrossEntropyLoss(
+	vector_array Predictions,
+	vector_array Labels,
+	HANDLE* ThreadHandles,
+	int NumThreads,
+	thread_cross_entropy_args* ThreadArgs
+)
+{
+	for(int Index = 0; Index < NumThreads; Index++)
+	{
+		DWORD ThreadId;
+		thread_cross_entropy_args* Args = &ThreadArgs[Index];
+		Args->Labels = Labels;
+		Args->Predictions = Predictions;
+		Args->Result = 0.0f;
+		Args->Start = Index;
+		Args->Stride = NumThreads;
+		ThreadHandles[Index] = CreateThread( 
+			NULL, // default security attributes
+			0, // use default stack size  
+			ThreadCrossEntropy, // thread function name
+			Args, // argument to thread function 
+			0, // use default creation flags 
+			&ThreadId // returns the thread identifier
+		);
+	}
+	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
+	float Sum = 0;
+	for(int Index = 0; Index < NumThreads; Index++)
+	{
+		thread_cross_entropy_args* Args = &ThreadArgs[Index];
+		Sum += Args->Result;
+	}
+	return Sum;
+}
+
 void MakeSpiralData(
 	int PointsPerClass,
 	int Dimensions,
@@ -516,6 +589,9 @@ int main(void)
 	);
 	thread_mse_args* MseArgs = (thread_mse_args*) (
 		malloc(NumThreads * sizeof(thread_mse_args))
+	);
+	thread_cross_entropy_args* CrossEntropyArgs = (thread_cross_entropy_args*) (
+		malloc(NumThreads * sizeof(thread_cross_entropy_args))
 	);
 
 	float Input1Data[4] = {1, 2, 3, 2.5};
@@ -670,6 +746,14 @@ int main(void)
 		SoftmaxForwardArgs
 	);
 	PrintVectorArray(*SoftmaxForwardInputs);
+	float CrossEntropyResult = CrossEntropyLoss(
+		*SoftmaxForwardInputs,
+		*Labels,
+		ThreadHandles,
+		NumThreads,
+		CrossEntropyArgs
+	);
+	printf("%f\n", CrossEntropyResult);
 	printf("\n");
 
 	// NOTE: for this test code, we don't need to free, but it's here if we need
