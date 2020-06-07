@@ -214,6 +214,97 @@ void CudaSoftmaxForward(vector_array Inputs, vector_array* Outputs)
 	}
 }
 
+__global__
+void MseThread(vector_array Predictions, vector_array Labels, vector* Results)
+{
+	int Start = blockIdx.x * blockDim.x + threadIdx.x;
+	float* Result = &Results->Data[Start];
+	int Stride = blockDim.x * gridDim.x;
+
+	for(int Row = Start; Row < Predictions.Length; Row += Stride)
+	{
+		float* Prediction = CudaGetVector(Predictions, Row);
+		float* Label = CudaGetVector(Labels, Row);
+		for(
+			int ElementIndex = 0;
+			ElementIndex < Predictions.VectorLength;
+			ElementIndex++
+		)
+		{
+			*Result += (float) pow(
+				Label[ElementIndex] - Prediction[ElementIndex], 2
+			);
+		}
+	}
+}
+
+float MeanSquaredError(
+	vector_array Predictions,
+	vector_array Labels,
+	vector* Results,
+	int NumBlocks,
+	int BlockSize
+)
+{
+	float Result = 0;
+	MseThread<<<NumBlocks, BlockSize>>>(Predictions, Labels, Results);
+	cudaDeviceSynchronize();
+	for(int ThreadIndex = 0; ThreadIndex < NumBlocks * BlockSize; ThreadIndex++)
+	{
+		Result += Results->Data[ThreadIndex];
+	}
+	return Result / ((float) Predictions.Length);
+}
+
+__global__
+void CrossEntropyThread(
+	vector_array Predictions, vector_array Labels, vector* Results
+)
+{
+	int Start = blockIdx.x * blockDim.x + threadIdx.x;
+	float* Result = &Results->Data[Start];
+	int Stride = blockDim.x * gridDim.x;
+
+	for(int Row = Start; Row < Predictions.Length; Row += Stride)
+	{
+		float* Prediction = CudaGetVector(Predictions, Row);
+		float* Label = CudaGetVector(Labels, Row);
+		for(
+			int ElementIndex = 0;
+			ElementIndex < Predictions.VectorLength;
+			ElementIndex++
+		)
+		{
+			*Result += (float) (
+				Label[ElementIndex] * log(Prediction[ElementIndex])
+			);
+		}
+	}
+	*Result = -1 * (*Result);
+}
+
+float CrossEntropyLoss(
+	vector_array Predictions,
+	vector_array Labels,
+	vector* Results,
+	int NumBlocks,
+	int BlockSize
+)
+{
+	float Result = 0;
+	CrossEntropyThread<<<NumBlocks, BlockSize>>>(Predictions, Labels, Results);
+	cudaDeviceSynchronize();
+	for(
+		int ThreadIndex = 0;
+		ThreadIndex < (NumBlocks * BlockSize);
+		ThreadIndex++
+	)
+	{
+		Result += Results->Data[ThreadIndex];
+	}
+	return Result;
+}
+
 void MakeCudaSpiralData(
 	int PointsPerClass,
 	int Dimensions,
@@ -322,6 +413,15 @@ int main(void)
 	Biases = Layer2->Biases;
 	memset(Biases->Data, 0, sizeof(float) * Biases->Length);
 
+	vector_array* Labels = NULL;
+	AllocCudaVectorArray(2, 3, &Labels);
+	float* Label = GetVector(*Labels, 0);
+	memset(Label, 0, GetVectorDataSize(*Labels));
+	Label[0] = 1.0f;
+	Label = GetVector(*Labels, 1);
+	memset(Label, 0, GetVectorDataSize(*Labels));
+	Label[1] = 1.0f;
+
 	vector_array* Layer1Outputs = NULL;
 	AllocCudaLayerOutput(Inputs->Length, *Layer1, &Layer1Outputs);
 	vector_array* Layer2Outputs = NULL;	
@@ -346,8 +446,18 @@ int main(void)
 	PrintVectorArray(*Layer2Outputs);
 	SigmoidForward<<<NumBlocks, BlockSize>>>(*Layer2Outputs, Layer2Outputs);
 	SyncResult = cudaDeviceSynchronize();
-	ASSERT(SyncResult == cudaSuccess);	
+	ASSERT(SyncResult == cudaSuccess);
 	PrintVectorArray(*Layer2Outputs);
+	vector* MseResults = NULL; 
+	AllocCudaVector(NumBlocks * BlockSize, &MseResults);
+	float MseResult = MeanSquaredError(
+		*Layer2Outputs,
+		*Labels,
+		MseResults,
+		NumBlocks,
+		BlockSize
+	);
+	printf("%f\n", MseResult);
 	printf("\n");
 
 	printf("RandInit test\n");
@@ -386,8 +496,19 @@ int main(void)
 	SyncResult = cudaDeviceSynchronize();
 	ASSERT(SyncResult == cudaSuccess);
 	PrintVectorArray(*SoftmaxForwardInputs);
+	vector* CrossEntropyResults = NULL;
+	AllocCudaVector(NumBlocks * BlockSize, &CrossEntropyResults); 
+	float CrossEntropyResult = CrossEntropyLoss(
+		*SoftmaxForwardInputs,
+		*Labels,
+		CrossEntropyResults,
+		NumBlocks,
+		BlockSize
+	);
+	printf("%f\n", CrossEntropyResult);
 	printf("\n");
 
+#if 0
 	printf("\n");
 	vector_array* SpiralInputs = NULL;
 	vector_array* SpiralOutputs = NULL;
@@ -422,5 +543,6 @@ int main(void)
 		}
 		printf("\n\n");
 	}
+#endif
 	return 0;
 }
