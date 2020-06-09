@@ -3,6 +3,7 @@
 REM TODO - can we just build both with one exe?
 
 call .\setup.bat
+call .\build_cpu.bat
 
 set BuildFolder=.\build
 set CommonCompilerFlags=-EHa- -Oi -Od -W4 -FC -Z7 -w44062
@@ -20,5 +21,5 @@ rem NOTE: -GR- Disabled runtime type information
 rem NOTE: -MT is used so that we don't use the c-runtime library DLL but 
 rem CONT: statically link instead 
 rem NOTE: -Od should be removed for non-debug builds
-cl %CommonCompilerFlags% /LD ..\neural_net_cpu.cpp -Fmneural_net_cpu.map /link %CommonLinkerFlags% -EXPORT:TempTest
+cl %CommonCompilerFlags% ..\test.cpp -Fmtest.map /link %CommonLinkerFlags% 
 popd
