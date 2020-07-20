@@ -1,212 +1,830 @@
-#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
+#include <stdio.h>
 #include <math.h>
+
 // TODO: Need to have a platform independent way of handling threads
 #include <windows.h>
 
-#include "neural_net_common.h"
-
-void AllocVector(uint64_t Length, vector** Result)
+int ArgMax(float* Array, uint64_t ArrayLength)
 {
-	*Result = (vector*) malloc(sizeof(vector));
-	vector* Vector = *Result;
-	Vector->Length = Length;
-	Vector->Data = (float*) malloc(GetVectorDataSize(*Vector));
+	int Index = 0;
+	int Result = Index;
+	float Highest = Array[Index];
+	for(Index = 1; Index < ArrayLength; Index++)
+	{
+		if(Array[Index] > Highest)
+		{
+			Highest = Array[Index];
+			Result = Index;
+		}
+	}
+	return Result;
 }
 
-void FreeVector(vector* Vector)
+struct matrix
 {
-	free(Vector->Data);
-	free(Vector);
+	uint32_t NumRows;
+	uint32_t NumColumns;
+	float* Data;	
+};
+
+inline size_t GetMatrixDataSize(matrix* Matrix)
+{
+	return Matrix->NumRows * Matrix->NumColumns * sizeof(float);
 }
 
-void AllocVectorArray(
-	uint64_t NumVectors, uint64_t VectorLength, vector_array** Result
-)
+bool MatricesAreEquivalent(matrix* M1, matrix* M2)
 {
-	// NOTE: not in common b/c it's in CPU memory, not shared memory with GPU
-	*Result = (vector_array*) malloc(sizeof(vector_array));
-	vector_array* VectorArray = *Result;
-	VectorArray->Length = NumVectors;
-	VectorArray->VectorLength = VectorLength;
-	VectorArray->Vectors = (float*) malloc(
-		GetVectorArrayDataSize(*VectorArray)
+	if(!(M1->NumRows == M2->NumRows && M1->NumColumns == M2->NumColumns))
+	{
+		return false;
+	}
+	return memcmp(M1->Data, M2->Data, GetMatrixDataSize(M1)) == 0;
+}
+
+void InitMatrix(matrix* Matrix, uint32_t NumRows, uint32_t NumColumns)
+{
+	Matrix->NumRows = NumRows;
+	Matrix->NumColumns = NumColumns;
+	Matrix->Data = (float*) malloc(GetMatrixDataSize(Matrix));
+}
+
+void AllocMatrix(matrix** Result, uint32_t NumRows, uint32_t NumColumns)
+{
+	matrix* Matrix = (matrix*) malloc(sizeof(matrix));
+	InitMatrix(Matrix, NumRows, NumColumns);
+	*Result = Matrix;
+}
+
+void AllocMultResultMatrix(matrix** Result, matrix* M1, matrix* M2)
+{
+	// NOTE: allocates a matrix that would result from the matrix multiplication
+	// CONT: of M1 and M2
+	AllocMatrix(Result, M1->NumRows, M2->NumColumns);
+}
+
+void AllocM1TransposeMultResultMatrix(matrix** Result, matrix* M1, matrix* M2)
+{
+	// NOTE: allocates a matrix that would result from the matrix multiplication
+	// CONT: of M1 tranposed and M2
+	AllocMatrix(Result, M1->NumColumns, M2->NumColumns);
+}
+
+void AllocM2TransposeMultResultMatrix(matrix** Result, matrix* M1, matrix* M2)
+{
+	// NOTE: allocates a matrix that would result from the matrix multiplication
+	// CONT: of M1 tranposed and M2
+	AllocMatrix(Result, M1->NumRows, M2->NumRows);
+}
+
+void AllocM1M2TransposeMultResultMatrix(matrix** Result, matrix* M1, matrix* M2)
+{
+	// NOTE: allocates a matrix that would result from the matrix multiplication
+	// CONT: of M1 tranposed and M2
+	AllocMatrix(Result, M1->NumColumns, M2->NumRows);
+}
+
+void AllocMatrixMeanResult(matrix** Result, matrix* M1)
+{
+	AllocMatrix(Result, 1, M1->NumColumns);
+}
+
+inline void MatrixClear(matrix* Matrix)
+{
+	memset(
+		Matrix->Data, 0, Matrix->NumRows * Matrix->NumColumns * sizeof(float)
 	);
 }
 
-void FreeVectorArray(vector_array* VectorArray)
+inline float* GetMatrixRow(matrix* Matrix, uint32_t Row)
 {
-	free(VectorArray->Vectors);
-	free(VectorArray);
+	float* Element = Matrix->Data + Row * Matrix->NumColumns;
+	return Element;
 }
 
-void MakeVectorArray(
-	uint64_t NumVectors, uint64_t VectorLength, vector_array** Result
+inline float GetMatrixElement(matrix* Matrix, uint32_t Row, uint32_t Column)
+{
+	float* Element = Matrix->Data + Row * Matrix->NumColumns + Column;
+	return *Element;
+}
+
+inline void SetMatrixElement(
+	matrix* Matrix, uint32_t Row, uint32_t Column, float Value
 )
 {
-	AllocVectorArray(NumVectors, VectorLength, Result);
-	vector_array* VectorArray = *Result;
-	memset(VectorArray->Vectors, 0, GetVectorArrayDataSize(*VectorArray));
+	float* Element = Matrix->Data + Row * Matrix->NumColumns + Column;
+	*Element = Value;
 }
 
-inline void AllocVectorArraySameDim(
-	vector_array CopyDimFrom, vector_array** Result
-)
+void FillIdentityMatrix(matrix* Matrix)
 {
-	return AllocVectorArray(
-		CopyDimFrom.Length, CopyDimFrom.VectorLength, Result
-	);
+	for(uint32_t Row = 0; Row < Matrix->NumRows; Row++)
+	{
+		for(uint32_t Col = 0; Col < Matrix->NumColumns; Col++)
+		{
+			float Value;
+			if(Row == Col)
+			{
+				Value = 1.0f;
+			}
+			else
+			{
+				Value = 0.0f;
+			}
+			SetMatrixElement(Matrix, Row, Col, Value);
+		}
+	}
 }
 
-void AllocLayerOutput(
-	uint64_t NumInputs, dense_layer Layer, vector_array** Result
-)
+inline float RandUnity()
 {
-	AllocVectorArray(NumInputs, Layer.Biases->Length, Result);
+	// NOTE: returns random float between 0.0 and 1.0 
+	return ((float) (rand() % RAND_MAX)) / ((float) RAND_MAX);
 }
 
-// TODO: finish CPU threading for matrix operations
-// TODO: figure out good error handling and thread-safe assertion scheme 
-void AllocDenseLayer(
-	uint64_t InputDim, uint64_t OutputDim, dense_layer** Result
-)
+void FillRandomMatrix(matrix* Matrix)
 {
-	*Result = (dense_layer*) malloc(sizeof(dense_layer));
-	dense_layer* DenseLayer = *Result;	
-	
-	AllocVectorArray(OutputDim, InputDim, &DenseLayer->Weights);
-	
-	AllocVector(OutputDim, &DenseLayer->Biases);
+	// NOTE: fills matrix with values randomly between 0.0f and 0.001f
+	// NOTE: values should never be 0.0f exactly
+	for(uint32_t Row = 0; Row < Matrix->NumRows; Row++)
+	{
+		for(uint32_t Col = 0; Col < Matrix->NumColumns; Col++)
+		{
+			float Value;
+			do
+			{
+				// NOTE: need small values to prevent runaway
+				Value = 0.001f * RandUnity();
+			} while(Value == 0.0f);
+			SetMatrixElement(Matrix, Row, Col, Value);
+		}
+	}
 }
 
-void MakeDenseLayer(
-	uint64_t InputDim, uint64_t OutputDim, dense_layer** Result
-)
+void PrintMatrix(matrix* Matrix)
 {
-	AllocDenseLayer(InputDim, OutputDim, Result);
-	InitDenseLayer(*Result);
+	printf("[\n");
+	for(uint32_t Row = 0; Row < Matrix->NumRows; Row++)
+	{
+		printf("[");
+		for(uint32_t Column = 0; Column < (Matrix->NumColumns - 1); Column++)
+		{
+			printf("%f, ", GetMatrixElement(Matrix, Row, Column));
+		}
+		printf("%f]\n", GetMatrixElement(Matrix, Row, Matrix->NumColumns - 1));
+	}
+	printf("]\n");
 }
 
-void FreeDenseLayer(dense_layer* DenseLayer)
+struct matrix_op_args
 {
-	FreeVector(DenseLayer->Biases);
-	FreeVectorArray(DenseLayer->Weights);
-	free(DenseLayer);
-}
-
-struct thread_dense_forward_args
-{
-	vector_array Inputs;
-	dense_layer DenseLayer;
-	vector_array* Outputs;
+	float Float;
+	matrix* M1;
+	matrix* M2;
+	matrix* Result;
 	int Start;
 	int Stride;
 };
 
-DWORD WINAPI ThreadDenseForward(void* VoidArgs)
+struct matrix_op_jobs
 {
-	thread_dense_forward_args* Args = (thread_dense_forward_args*) VoidArgs;
-	vector_array Inputs = Args->Inputs;
-	dense_layer DenseLayer = Args->DenseLayer;
-	vector_array* Outputs = Args->Outputs;
-	weights* Weights = DenseLayer.Weights;
-	vector* Biases = DenseLayer.Biases;
-	float* BiasData = Biases->Data;
-	int Start = Args->Start;
-	int Stride = Args->Stride;
+	uint32_t NumThreads;
+	matrix_op_args* Args;
+	HANDLE* Handles;
+};
 
-	for(int Row = Start; Row < Inputs.Length; Row += Stride)
+void AllocMatrixOpJobs(matrix_op_jobs** Result, uint32_t NumThreads)
+{
+	matrix_op_jobs* Jobs = (matrix_op_jobs*) malloc(sizeof(matrix_op_jobs));
+	Jobs->NumThreads = NumThreads;
+	Jobs->Args = (matrix_op_args*) malloc(
+		Jobs->NumThreads * sizeof(matrix_op_args)
+	);
+	Jobs->Handles = (HANDLE*) malloc(Jobs->NumThreads * sizeof(HANDLE));
+	*Result = Jobs;
+}
+
+void MatrixOpThreadSetupAndRun(
+	matrix_op_jobs* MatrixOpJobs,
+	matrix* M1,
+	matrix* M2,
+	matrix* Result,
+	LPTHREAD_START_ROUTINE ThreadFunction
+)
+{
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < MatrixOpJobs->NumThreads;
+		ThreadIndex++
+	)
 	{
-		// NOTE: we might be able to save on a copy here
-		float* Input = GetVector(Inputs, Row);
-		float* Output = GetVector(*Outputs, Row);
-		for(int WeightIndex = 0; WeightIndex < Weights->Length; WeightIndex++)
+		matrix_op_args* Args = MatrixOpJobs->Args + ThreadIndex;
+		Args->M1 = M1;
+		Args->M2 = M2;
+		Args->Result = Result;
+		Args->Start = ThreadIndex;
+		Args->Stride = MatrixOpJobs->NumThreads;
+		DWORD ThreadId;
+		MatrixOpJobs->Handles[ThreadIndex] = CreateThread(
+			NULL, 0, ThreadFunction, Args, 0, &ThreadId 
+		);
+	}
+	WaitForMultipleObjects(
+		MatrixOpJobs->NumThreads, MatrixOpJobs->Handles, TRUE, INFINITE
+	);
+}
+
+DWORD WINAPI CopyMatrixThread(void* VoidArgs)
+{
+	matrix_op_args* Args = (matrix_op_args*) VoidArgs;
+	matrix* Destination = Args->M1;
+	matrix* Source = Args->M2;
+	uint32_t Start = Args->Start;
+	uint32_t Stride = Args->Stride;
+
+	for(uint32_t Row = Start; Row < Destination->NumRows; Row += Stride)
+	{
+		for(uint32_t Column = 0; Column < Destination->NumColumns; Column++)
 		{
-			float DotResult = 0.0;
-			float* WeightVector = GetVector(*Weights, WeightIndex);
-			for(
-				int ElementIndex = 0;
-				ElementIndex < Weights->VectorLength;
-				ElementIndex++
-			)
-			{
-				DotResult += (
-					Input[ElementIndex] * WeightVector[ElementIndex]
-				);
-			}
-			Output[WeightIndex] = DotResult + BiasData[WeightIndex]; 
+			SetMatrixElement(
+				Destination, Row, Column, GetMatrixElement(Source, Row, Column)
+			);
 		}
 	}
 	return 0;
 }
 
-void DenseForward(
-	vector_array Inputs,
-	dense_layer DenseLayer,
-	vector_array* Outputs,
-	HANDLE* ThreadHandles,
-	int NumThreads,
-	thread_dense_forward_args* ThreadArgs
+void CopyMatrix(
+	matrix_op_jobs* MatrixOpJobs,
+	matrix* Destination,
+	matrix* Source
 )
 {
-	// NOTE: only works for windows right now
-	for(int Index = 0; Index < NumThreads; Index++)
-	{
-		DWORD ThreadId;
-		thread_dense_forward_args* Args = &ThreadArgs[Index];
-		Args->Inputs = Inputs;
-		Args->DenseLayer = DenseLayer;
-		Args->Outputs = Outputs;
-		Args->Start = Index;
-		Args->Stride = NumThreads;
-		ThreadHandles[Index] = CreateThread( 
-			NULL, // default security attributes
-			0, // use default stack size  
-			ThreadDenseForward, // thread function name
-			Args, // argument to thread function 
-			0, // use default creation flags 
-			&ThreadId // returns the thread identifier
-		);
-	}
-	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
+	Destination->NumRows = Source->NumRows;
+	Destination->NumColumns = Source->NumColumns;
+	MatrixOpThreadSetupAndRun(
+		MatrixOpJobs, Destination, Source, NULL, CopyMatrixThread
+	);
 }
 
-struct thread_relu_forward_args
+void MatrixScalarMultCoreColStride(
+	float Scalar, matrix* M1, matrix* Result, int Start, int Stride
+)
 {
-	vector_array Inputs;
-	vector_array* Outputs;
-	int Start;
-	int Stride;
+	// NOTE: the number of columns in M1 should equal the number of rows in M2
+	for(uint32_t Row = 0; Row < M1->NumRows; Row++)
+	{
+		for(uint32_t Column = Start; Column < M1->NumColumns; Column += Stride)
+		{
+			float NewValue = Scalar * GetMatrixElement(M1, Row, Column);
+			SetMatrixElement(Result, Row, Column, NewValue);
+		}
+	}
+}
+
+void MatrixScalarMultCore(
+	float Scalar, matrix* M1, matrix* Result, int Start, int Stride
+)
+{
+	// NOTE: the number of columns in M1 should equal the number of rows in M2
+	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	{
+		for(uint32_t Column = 0; Column < M1->NumColumns; Column++)
+		{
+			float NewValue = Scalar * GetMatrixElement(M1, Row, Column);
+			SetMatrixElement(Result, Row, Column, NewValue);
+		}
+	}
+}
+
+DWORD WINAPI MatrixScalarMultThread(void* VoidArgs)
+{
+	matrix_op_args* Job = (matrix_op_args*) VoidArgs;
+	MatrixScalarMultCore(
+		Job->Float, Job->M1, Job->Result, Job->Start, Job->Stride
+	);
+	return 0;
+}
+
+void MatrixScalarMult(
+	matrix_op_jobs* MatrixOpJobs, float Scalar, matrix* M1, matrix* Result
+)
+{
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < MatrixOpJobs->NumThreads;
+		ThreadIndex++
+	)
+	{
+		matrix_op_args* Args = MatrixOpJobs->Args + ThreadIndex;
+		Args->Float = Scalar;
+		Args->M1 = M1;
+		Args->Result = Result;
+		Args->Start = ThreadIndex;
+		Args->Stride = MatrixOpJobs->NumThreads;
+		DWORD ThreadId;
+		MatrixOpJobs->Handles[ThreadIndex] = CreateThread(
+			NULL, 0, MatrixScalarMultThread, Args, 0, &ThreadId 
+		);
+	}
+	WaitForMultipleObjects(
+		MatrixOpJobs->NumThreads, MatrixOpJobs->Handles, TRUE, INFINITE
+	);
+}
+
+void MatrixMultCore(
+	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+)
+{
+	// NOTE: the number of columns in M1 should equal the number of rows in M2
+	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	{
+		for(uint32_t Column = 0; Column < M2->NumColumns; Column++)
+		{
+			float DotProduct = 0.0f;
+			for(uint32_t DPIndex = 0; DPIndex < M1->NumColumns; DPIndex++)
+			{
+				DotProduct += (
+					GetMatrixElement(M1, Row, DPIndex) * 
+					GetMatrixElement(M2, DPIndex, Column)
+				);
+			}
+			SetMatrixElement(Result, Row, Column, DotProduct);
+		}
+	}
+}
+
+DWORD WINAPI MatrixMultThread(void* VoidArgs)
+{
+	matrix_op_args* Job = (matrix_op_args*) VoidArgs;
+	MatrixMultCore(Job->M1, Job->M2, Job->Result, Job->Start, Job->Stride);
+	return 0;
+}
+
+void MatrixMult(
+	matrix_op_jobs* MatrixOpJobs, matrix* M1, matrix* M2, matrix* Result
+)
+{
+	MatrixOpThreadSetupAndRun(MatrixOpJobs, M1, M2, Result, MatrixMultThread);
+}
+
+void MatrixMultM1TransposeCore(
+	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+)
+{
+	// NOTE: For transpose multiplication without allocating and initializing
+	// CONT: a new matrix
+	// NOTE: the number of rows in M1 should equal the number of rows in M2
+	for(uint32_t Row = Start; Row < M1->NumColumns; Row += Stride)
+	{
+		for(uint32_t Column = 0; Column < M2->NumColumns; Column++)
+		{
+			float DotProduct = 0.0f;
+			for(uint32_t DPIndex = 0; DPIndex < M1->NumRows; DPIndex++)
+			{
+				DotProduct += (
+					GetMatrixElement(M1, DPIndex, Row) * 
+					GetMatrixElement(M2, DPIndex, Column)
+				);
+			}
+			SetMatrixElement(Result, Row, Column, DotProduct);
+		}
+	}
+}
+
+DWORD WINAPI MatrixMultM1TransposeThread(void* VoidArgs)
+{
+	matrix_op_args* Job = (matrix_op_args*) VoidArgs;
+	MatrixMultM1TransposeCore(
+		Job->M1, Job->M2, Job->Result, Job->Start, Job->Stride
+	);
+	return 0;
+}
+
+void MatrixMultM1Transpose(
+	matrix_op_jobs* MatrixOpJobs, matrix* M1, matrix* M2, matrix* Result
+)
+{
+	MatrixOpThreadSetupAndRun(
+		MatrixOpJobs, M1, M2, Result, MatrixMultM1TransposeThread
+	);
+}
+
+void MatrixMultM2TransposeCore(
+	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+)
+{
+	// NOTE: For transpose multiplication without allocating and initializing
+	// CONT: a new matrix
+	// NOTE: the number of columns in M1 should equal the number of columns in M2
+	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	{
+		for(uint32_t Column = 0; Column < M2->NumRows; Column++)
+		{
+			float DotProduct = 0.0f;
+			for(uint32_t DPIndex = 0; DPIndex < M1->NumColumns; DPIndex++)
+			{
+				DotProduct += (
+					GetMatrixElement(M1, Row, DPIndex) * 
+					GetMatrixElement(M2, Column, DPIndex)
+				);
+			}
+			SetMatrixElement(Result, Row, Column, DotProduct);
+		}
+	}
+}
+
+DWORD WINAPI MatrixMultM2TransposeThread(void* VoidArgs)
+{
+	matrix_op_args* Job = (matrix_op_args*) VoidArgs;
+	MatrixMultM2TransposeCore(
+		Job->M1, Job->M2, Job->Result, Job->Start, Job->Stride
+	);
+	return 0;
+}
+
+void MatrixMultM2Transpose(
+	matrix_op_jobs* MatrixOpJobs, matrix* M1, matrix* M2, matrix* Result
+)
+{
+	MatrixOpThreadSetupAndRun(
+		MatrixOpJobs, M1, M2, Result, MatrixMultM2TransposeThread
+	);
+}
+
+void MatrixMultM1M2TransposeCore(
+	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+)
+{
+	// NOTE: For transpose multiplication without allocating and initializing
+	// CONT: a new matrix
+	// NOTE: the number of rows in M1 should equal the number of columns in M2
+	for(uint32_t Row = Start; Row < M1->NumColumns; Row += Stride)
+	{
+		for(uint32_t Column = 0; Column < M2->NumRows; Column++)
+		{
+			float DotProduct = 0.0f;
+			for(uint32_t DPIndex = 0; DPIndex < M1->NumRows; DPIndex++)
+			{
+				DotProduct += (
+					GetMatrixElement(M1, DPIndex, Row) * 
+					GetMatrixElement(M2, Column, DPIndex)
+				);
+			}
+			SetMatrixElement(Result, Row, Column, DotProduct);
+		}
+	}
+}
+
+DWORD WINAPI MatrixMultM1M2TransposeThread(void* VoidArgs)
+{
+	matrix_op_args* Job = (matrix_op_args*) VoidArgs;
+	MatrixMultM1M2TransposeCore(
+		Job->M1, Job->M2, Job->Result, Job->Start, Job->Stride
+	);
+	return 0;
+}
+
+void MatrixMultM1M2Transpose(
+	matrix_op_jobs* MatrixOpJobs, matrix* M1, matrix* M2, matrix* Result
+)
+{
+	MatrixOpThreadSetupAndRun(
+		MatrixOpJobs, M1, M2, Result, MatrixMultM1M2TransposeThread
+	);
+}
+
+void MatrixAddCore(matrix* M1, matrix* M2, matrix* Result, int Start, int Stride)
+{
+	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	{
+		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
+		{
+			SetMatrixElement(
+				Result,
+				Row,
+				Col,
+				GetMatrixElement(M1, Row, Col) + GetMatrixElement(M2, Row, Col)
+			);
+		}
+	}
+}
+
+DWORD WINAPI MatrixAddThread(void* VoidArgs)
+{
+	matrix_op_args* Args = (matrix_op_args*) VoidArgs;
+	MatrixAddCore(Args->M1, Args->M2, Args->Result, Args->Start, Args->Stride);
+	return 0;
+}
+
+void MatrixAdd(
+	matrix_op_jobs* MatrixOpJobs, matrix* M1, matrix* M2, matrix* Result
+)
+{
+	MatrixOpThreadSetupAndRun(
+		MatrixOpJobs, M1, M2, Result, MatrixAddThread
+	);
+}
+
+void MatrixSubtractCore(
+	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+)
+{
+	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	{
+		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
+		{
+			SetMatrixElement(
+				Result,
+				Row,
+				Col,
+				GetMatrixElement(M1, Row, Col) - GetMatrixElement(M2, Row, Col)
+			);
+		}
+	}
+}
+
+DWORD WINAPI MatrixSubtractThread(void* VoidArgs)
+{
+	matrix_op_args* Args = (matrix_op_args*) VoidArgs;
+	MatrixSubtractCore(
+		Args->M1, Args->M2, Args->Result, Args->Start, Args->Stride
+	);
+	return 0;
+}
+
+void MatrixSubtract(
+	matrix_op_jobs* MatrixOpJobs, matrix* M1, matrix* M2, matrix* Result
+)
+{
+	MatrixOpThreadSetupAndRun(
+		MatrixOpJobs, M1, M2, Result, MatrixSubtractThread
+	);
+}
+
+void AddVectorToRowsCore(
+	matrix* M1, matrix* Vector, matrix* Result, int Start, int Stride
+)
+{
+	/*NOTE:
+	Because the vector is one-dimensional, it doesn't matter whether you pass 
+	Col into the row or the column 
+	a nice consequence of this is that it doesn't matter whether you pass in a 
+	row vector or a column vector. It will project nicely as long as the non-one
+	dimension is equal to the number of columns of M1
+	*/
+	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	{
+		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
+		{
+			SetMatrixElement(
+				Result,
+				Row,
+				Col,
+				(
+					GetMatrixElement(M1, Row, Col) + 
+					GetMatrixElement(Vector, 0, Col)
+				)
+			);
+		}
+	}
+}
+
+DWORD WINAPI AddVectorToRowsThread(void* VoidArgs)
+{
+	matrix_op_args* Args = (matrix_op_args*) VoidArgs;
+	AddVectorToRowsCore(
+		Args->M1, Args->M2, Args->Result, Args->Start, Args->Stride
+	);
+	return 0;
+}
+
+void AddVectorToRows(
+	matrix_op_jobs* MatrixOpJobs, matrix* M1, matrix* Vector, matrix* Result
+)
+{
+	// NOTE: this function is equivalent to adding two matrices, M1 and M2,
+	// CONT: where M2 has the same values in each row (Vector) 
+	// NOTE: there's no reason to allocate a huge matrix just for this, so this 
+	// CONT: method is used instead
+	MatrixOpThreadSetupAndRun(
+		MatrixOpJobs, M1, Vector, Result, AddVectorToRowsThread
+	);
+}
+
+void MatrixMeanCore(matrix* M1, matrix* Result, int Start, int Stride)
+{
+	MatrixScalarMultCoreColStride(0.0f, Result, Result, Start, Stride);
+	for(uint32_t Row = 0; Row < M1->NumRows; Row++)
+	{
+		for(uint32_t Col = Start; Col < M1->NumColumns; Col += Stride)
+		{
+			float NewValue = (
+				GetMatrixElement(Result, 0, Col) + 
+				GetMatrixElement(M1, Row, Col)
+			);
+			SetMatrixElement(Result, 0, Col, NewValue);
+		}
+	}
+	MatrixScalarMultCoreColStride(
+		1.0f / M1->NumRows, Result, Result, Start, Stride
+	);
+}
+
+DWORD WINAPI MatrixMeanThread(void* VoidArgs)
+{
+	matrix_op_args* Args = (matrix_op_args*) VoidArgs;
+	MatrixMeanCore(Args->M1, Args->Result, Args->Start, Args->Stride);
+	return 0;
+}
+
+void MatrixMean(
+	matrix_op_jobs* MatrixOpJobs, matrix* M1, matrix* Result
+)
+{
+	/*NOTE:
+	This function finds the sum of all the row vectors of matrix M1 and divides
+	that sum by the number of rows. 
+
+	M1 Dimensions: N x M
+	Result Dimensions: 1 x M
+	*/
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < MatrixOpJobs->NumThreads;
+		ThreadIndex++
+	)
+	{
+		matrix_op_args* Args = MatrixOpJobs->Args + ThreadIndex;
+		Args->M1 = M1;
+		Args->Result = Result;
+		Args->Start = ThreadIndex;
+		Args->Stride = MatrixOpJobs->NumThreads;
+		DWORD ThreadId;
+		MatrixOpJobs->Handles[ThreadIndex] = CreateThread(
+			NULL, 0, MatrixMeanThread, Args, 0, &ThreadId 
+		);
+	}
+	WaitForMultipleObjects(
+		MatrixOpJobs->NumThreads, MatrixOpJobs->Handles, TRUE, INFINITE
+	);
+}
+
+struct dense_layer
+{
+	/* NOTE: 
+	Inputs matrix to this layer has dimensions K x N where K is the number of 
+	samples in the batch and N is the number of dimensions for the output of the 
+	previous layer
+	Therefore, Weights has dimensions N x M, M is the dimension of the output 
+	for this dense layer
+	Bias has dimensions 1 x M
+	*/
+	matrix Weights;
+	matrix Bias;
 };
 
-DWORD WINAPI ThreadReluForward(void* VoidArgs)
+void AllocDenseLayer(
+	dense_layer** Result, uint32_t InputDim, uint32_t OutputDim
+)
 {
-	thread_relu_forward_args* Args = (thread_relu_forward_args*) VoidArgs;
-	vector_array Inputs = Args->Inputs;
-	vector_array* Outputs = Args->Outputs;
-	int Start = Args->Start;
-	int Stride = Args->Stride;
+	dense_layer* DenseLayer = (dense_layer*) malloc(sizeof(dense_layer));
+	InitMatrix(&DenseLayer->Weights, InputDim, OutputDim);
+	InitMatrix(&DenseLayer->Bias, 1, OutputDim);
+	*Result = DenseLayer;
+}
 
-	for(int Row = Start; Row < Inputs.Length; Row += Stride)
+struct dense_layer_train_data
+{
+	matrix WeightsDelta;
+	matrix BiasDelta;
+	matrix LayerGradient;
+	float LearningRate;
+};
+
+void AllocDenseLayerTrain(
+	dense_layer_train_data** Result,
+	dense_layer* DenseLayer,
+	float LearningRate,
+	uint32_t BatchSize
+)
+{
+	dense_layer_train_data* TrainData = (dense_layer_train_data*) malloc(
+		sizeof(dense_layer_train_data)
+	);
+	TrainData->LearningRate = LearningRate; 
+	InitMatrix(
+		&TrainData->WeightsDelta,
+		DenseLayer->Weights.NumRows,
+		DenseLayer->Weights.NumColumns
+	);
+	InitMatrix(
+		&TrainData->BiasDelta,
+		DenseLayer->Bias.NumRows,
+		DenseLayer->Bias.NumColumns
+	);
+	InitMatrix(
+		&TrainData->LayerGradient, BatchSize, DenseLayer->Weights.NumRows
+	);
+	*Result = TrainData;
+}
+
+void DenseForward(
+	matrix_op_jobs* MatrixOpJobs,
+	matrix* Inputs,
+	dense_layer* DenseLayer,
+	matrix* Results
+)
+{
+	MatrixMult(MatrixOpJobs, Inputs, &DenseLayer->Weights, Results);
+	AddVectorToRows(MatrixOpJobs, Results, &DenseLayer->Bias, Results);	
+}
+
+void DenseBack(
+	matrix_op_jobs* MatrixOpJobs,
+	matrix* Inputs,
+	matrix* NextLayerGradient,
+	dense_layer* DenseLayer,
+	dense_layer_train_data* TrainData
+)
+{
+	MatrixMultM2Transpose(
+		MatrixOpJobs,
+		NextLayerGradient,
+		&DenseLayer->Weights,
+		&TrainData->LayerGradient
+	);
+
+	MatrixMultM1Transpose(
+		MatrixOpJobs, Inputs, NextLayerGradient, &TrainData->WeightsDelta
+	);
+	MatrixScalarMult(
+		MatrixOpJobs,
+		TrainData->LearningRate,
+		&TrainData->WeightsDelta,
+		&TrainData->WeightsDelta
+	);
+	MatrixAdd(
+		MatrixOpJobs,
+		&DenseLayer->Weights,
+		&TrainData->WeightsDelta,
+		&DenseLayer->Weights
+	);
+	
+	MatrixMean(MatrixOpJobs, NextLayerGradient, &TrainData->BiasDelta);
+	MatrixScalarMult(
+		MatrixOpJobs,
+		TrainData->LearningRate,
+		&TrainData->BiasDelta,
+		&TrainData->BiasDelta
+	);
+	MatrixAdd(
+		MatrixOpJobs,
+		&DenseLayer->Bias,
+		&TrainData->BiasDelta,
+		&DenseLayer->Bias
+	);
+}
+
+struct relu_train_data
+{
+	matrix LayerGradient;
+};
+
+void AllocReluTrain(
+	relu_train_data** Result, uint32_t BatchSize, uint32_t InputDim
+)
+{
+	relu_train_data* TrainData = (relu_train_data*) malloc(
+		sizeof(relu_train_data)
+	);
+	InitMatrix(&TrainData->LayerGradient, BatchSize, InputDim);
+	*Result = TrainData;
+}
+
+DWORD WINAPI ReluForwardThread(void* VoidArgs)
+{
+	matrix_op_args* Args = (matrix_op_args*) VoidArgs;
+	matrix* M1 = Args->M1;
+	matrix* Result = Args->Result;
+	uint32_t Start = Args->Start;
+	uint32_t Stride = Args->Stride;
+	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
 	{
-		float* Input = GetVector(Inputs, Row);
-		float* Output = GetVector(*Outputs, Row);
-		for(
-			int ElementIndex = 0;
-			ElementIndex < Inputs.VectorLength;
-			ElementIndex++
-		)
+		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
 		{
-			if(Input[ElementIndex] < 0)
+			float NewValue;
+			float OldValue = GetMatrixElement(M1, Row, Col);
+			if(OldValue < 0)
 			{
-				Output[ElementIndex] = 0;
+				NewValue = 0;
 			}
 			else
 			{
-				Output[ElementIndex] = Input[ElementIndex];
+				NewValue = OldValue;
 			}
+			SetMatrixElement(Result, Row, Col, NewValue);
 		}
 	}
 
@@ -214,610 +832,867 @@ DWORD WINAPI ThreadReluForward(void* VoidArgs)
 }
 
 void ReluForward(
-	vector_array Inputs,
-	vector_array* Outputs,
-	HANDLE* ThreadHandles,
-	int NumThreads,
-	thread_relu_forward_args* ThreadArgs
+	matrix_op_jobs* MatrixOpJobs,
+	matrix* Inputs,
+	matrix* Outputs
 )
 {
-	// NOTE: only works for windows right now
-	for(int Index = 0; Index < NumThreads; Index++)
-	{
-		DWORD ThreadId;
-		thread_relu_forward_args* Args = &ThreadArgs[Index];
-		Args->Inputs = Inputs;
-		Args->Outputs = Outputs;
-		Args->Start = Index;
-		Args->Stride = NumThreads;
-		ThreadHandles[Index] = CreateThread( 
-			NULL, // default security attributes
-			0, // use default stack size  
-			ThreadReluForward, // thread function name
-			Args, // argument to thread function 
-			0, // use default creation flags 
-			&ThreadId // returns the thread identifier
-		);
-	}
-	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
+	MatrixOpThreadSetupAndRun(
+		MatrixOpJobs, Inputs, NULL, Outputs, ReluForwardThread
+	);
 }
 
-struct thread_sigmoid_forward_args
+DWORD WINAPI ReluBackThread(void* VoidArgs)
 {
-	vector_array Inputs;
-	vector_array* Outputs;
-	int Start;
-	int Stride;
-};
-
-DWORD WINAPI ThreadSigmoidForward(void* VoidArgs)
-{
-	thread_sigmoid_forward_args* Args = (thread_sigmoid_forward_args*) VoidArgs;
-	vector_array Inputs = Args->Inputs;
-	vector_array* Outputs = Args->Outputs;
-	int Start = Args->Start;
-	int Stride = Args->Stride;
-
-	for(int Row = Start; Row < Inputs.Length; Row += Stride)
+	matrix_op_args* Args = (matrix_op_args*) VoidArgs;
+	matrix* Inputs = Args->M1;
+	matrix* NextLayerGradient = Args->M2;
+	matrix* LayerGradient = Args->Result;
+	uint32_t Start = Args->Start;
+	uint32_t Stride = Args->Stride;
+	for(uint32_t Row = Start; Row < Inputs->NumRows; Row += Stride)
 	{
-		float* Input = GetVector(Inputs, Row);
-		float* Output = GetVector(*Outputs, Row);
-		for(
-			int ElementIndex = 0;
-			ElementIndex < Inputs.VectorLength;
-			ElementIndex++
-		)
+		for(uint32_t Col = 0; Col < Inputs->NumColumns; Col++)
 		{
-			Output[ElementIndex] = (float) (
-				1.0f / (1 + exp(-1 * Input[ElementIndex]))
-			);
+			float LayerGradientElement;
+			float InputValue = GetMatrixElement(Inputs, Row, Col);
+			if(InputValue <= 0)
+			{
+				LayerGradientElement = 0;
+			}
+			else
+			{
+				LayerGradientElement = GetMatrixElement(
+					NextLayerGradient, Row, Col
+				);
+			}
+			SetMatrixElement(LayerGradient, Row, Col, LayerGradientElement);
 		}
 	}
 
 	return 0;
 }
 
-void SigmoidForward(
-	vector_array Inputs,
-	vector_array* Outputs,
-	HANDLE* ThreadHandles,
-	int NumThreads,
-	thread_sigmoid_forward_args* ThreadArgs
+void ReluBack(
+	matrix_op_jobs* MatrixOpJobs,
+	matrix* Inputs,
+	matrix* NextLayerGradient,
+	relu_train_data* TrainData
 )
 {
-	// NOTE: only works for windows right now
-	for(int Index = 0; Index < NumThreads; Index++)
-	{
-		DWORD ThreadId;
-		thread_sigmoid_forward_args* Args = &ThreadArgs[Index];
-		Args->Inputs = Inputs;
-		Args->Outputs = Outputs;
-		Args->Start = Index;
-		Args->Stride = NumThreads;
-		ThreadHandles[Index] = CreateThread( 
-			NULL, // default security attributes
-			0, // use default stack size  
-			ThreadSigmoidForward, // thread function name
-			Args, // argument to thread function 
-			0, // use default creation flags 
-			&ThreadId // returns the thread identifier
-		);
-	}
-	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
+	MatrixOpThreadSetupAndRun(
+		MatrixOpJobs,
+		Inputs, 
+		NextLayerGradient, 
+		&TrainData->LayerGradient,
+		ReluBackThread
+	);
 }
 
-struct thread_softmax_forward_args
+struct softmax_layer
 {
-	vector_array Inputs;
-	vector_array* Outputs;
-	int Start;
-	int Stride;
+	matrix Intermediate;
 };
 
-DWORD WINAPI ThreadSoftmaxForward(void* VoidArgs)
+void AllocSoftmaxLayer(
+	softmax_layer** Result, uint32_t BatchSize, uint32_t Dim
+)
 {
-	thread_softmax_forward_args* Args = (thread_softmax_forward_args*) VoidArgs;
-	vector_array Inputs = Args->Inputs;
-	vector_array* Outputs = Args->Outputs;
-	int Start = Args->Start;
-	int Stride = Args->Stride;
+	softmax_layer* SoftmaxLayer = (softmax_layer*) malloc(
+		sizeof(softmax_layer)
+	);
+	InitMatrix(&SoftmaxLayer->Intermediate, BatchSize, Dim);
+	*Result = SoftmaxLayer;
+}
 
-	for(int Row = Start; Row < Inputs.Length; Row += Stride)
+struct softmax_train_data
+{
+	matrix LayerGradient;
+};
+
+void AllocSoftmaxTrain(
+	softmax_train_data** Result, uint32_t BatchSize, uint32_t InputDim
+)
+{
+	softmax_train_data* TrainData = (softmax_train_data*) malloc(
+		sizeof(softmax_train_data)
+	);
+	InitMatrix(&TrainData->LayerGradient, BatchSize, InputDim);
+	*Result = TrainData;
+}
+
+DWORD WINAPI SoftmaxForwardThread(void* VoidArgs)
+{
+	matrix_op_args* Args = (matrix_op_args*) VoidArgs;
+	matrix* Inputs = Args->M1;
+	matrix* Intermediate = Args->M2;
+	matrix* Result = Args->Result;
+	uint32_t Start = Args->Start;
+	uint32_t Stride = Args->Stride;
+	for(uint32_t Row = Start; Row < Inputs->NumRows; Row += Stride)
 	{
-		float Sum = 0;
-		float* Input = GetVector(Inputs, Row);
-		float* Output = GetVector(*Outputs, Row);
-		for(
-			int ElementIndex = 0;
-			ElementIndex < Inputs.VectorLength;
-			ElementIndex++
-		)
+		// NOTE: find max for row in order to maintain numerical stability with
+		// CONT: 32-bit float
+		float RowMax = GetMatrixElement(Inputs, Row, 0);
+		for(uint32_t Col = 1; Col < Inputs->NumColumns; Col++)
 		{
-			Input[ElementIndex] = (float) exp(Input[ElementIndex]);
-			Sum += Input[ElementIndex];
+			float Value = GetMatrixElement(Inputs, Row, Col);
+			if(Value > RowMax)
+			{
+				RowMax = Value;
+			}
 		}
 
-		for(
-			int ElementIndex = 0;
-			ElementIndex < Inputs.VectorLength;
-			ElementIndex++
-		)
+		float Sum = 0;
+		for(uint32_t Col = 0; Col < Inputs->NumColumns; Col++)
 		{
-			Output[ElementIndex] = Input[ElementIndex] / Sum;
+			float Value = (float) exp(
+				GetMatrixElement(Inputs, Row, Col) - RowMax
+			);
+			SetMatrixElement(Intermediate, Row, Col, Value);
+			Sum += Value;
+		}
+
+		for(uint32_t Col = 0; Col < Inputs->NumColumns; Col++)
+		{
+			SetMatrixElement(
+				Result,
+				Row,
+				Col,
+				GetMatrixElement(Intermediate, Row, Col) / Sum
+			);
 		}
 	}
+
 	return 0;
 }
 
 void SoftmaxForward(
-	vector_array Inputs,
-	vector_array* Outputs,
-	HANDLE* ThreadHandles,
-	int NumThreads,
-	thread_softmax_forward_args* ThreadArgs
+	matrix_op_jobs* MatrixOpJobs,
+	softmax_layer* SoftmaxLayer,
+	matrix* Inputs,
+	matrix* Outputs
 )
 {
-	for(int Index = 0; Index < NumThreads; Index++)
-	{
-		DWORD ThreadId;
-		thread_softmax_forward_args* Args = &ThreadArgs[Index];
-		Args->Inputs = Inputs;
-		Args->Outputs = Outputs;
-		Args->Start = Index;
-		Args->Stride = NumThreads;
-		ThreadHandles[Index] = CreateThread( 
-			NULL, // default security attributes
-			0, // use default stack size  
-			ThreadSoftmaxForward, // thread function name
-			Args, // argument to thread function 
-			0, // use default creation flags 
-			&ThreadId // returns the thread identifier
-		);
-	}
-	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
+	// NOTE: only used in conjunction with cross-entropy loss right now
+	MatrixOpThreadSetupAndRun(
+		MatrixOpJobs,
+		Inputs,
+		&SoftmaxLayer->Intermediate,
+		Outputs,
+		SoftmaxForwardThread
+	);
 }
 
-struct thread_mse_args
+DWORD WINAPI CrossEntropyForwardThread(void* VoidArgs)
 {
-	vector_array Predictions;
-	vector_array Labels;
-	float Result;
-	int Start;
-	int Stride;
-};
-
-DWORD WINAPI ThreadMse(void* VoidArgs)
-{
-	thread_mse_args* Args = (thread_mse_args*) VoidArgs;
-	vector_array Predictions = Args->Predictions;
-	vector_array Labels = Args->Labels;
-	float* Result = &Args->Result;
+	matrix_op_args* Args = (matrix_op_args*) VoidArgs;
+	matrix* Predictions = Args->M1;
+	matrix* Labels = Args->M2;
 	int Start = Args->Start;
 	int Stride = Args->Stride;
 
-	for(int Row = Start; Row < Predictions.Length; Row += Stride)
+	float Result = 0.0f;
+	for(uint32_t Row = Start; Row < Predictions->NumRows; Row += Stride)
 	{
-		float* Prediction = GetVector(Predictions, Row);
-		float* Label = GetVector(Labels, Row);
-		for(
-			int ElementIndex = 0;
-			ElementIndex < Predictions.VectorLength;
-			ElementIndex++
-		)
+		for(uint32_t Col = 0; Col < Predictions->NumColumns; Col++)
 		{
-			*Result += (float) pow(
-				Label[ElementIndex] - Prediction[ElementIndex], 2
+			Result += (float) (
+				GetMatrixElement(Labels, Row, Col) * 
+				log(GetMatrixElement(Predictions, Row, Col))
 			);
 		}
 	}
+	Args->Float = -1.0f * Result;
 	return 0;
 }
 
-float MeanSquaredError(
-	vector_array Predictions,
-	vector_array Labels,
-	HANDLE* ThreadHandles,
-	int NumThreads,
-	thread_mse_args* ThreadArgs
+float CrossEntropyForward(
+	matrix_op_jobs* MatrixOpJobs,
+	matrix* Predictions,
+	matrix* Labels
 )
 {
-	for(int Index = 0; Index < NumThreads; Index++)
+	// NOTE: only used in conjunction with softmax right now
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < MatrixOpJobs->NumThreads;
+		ThreadIndex++
+	)
 	{
+		matrix_op_args* Args = MatrixOpJobs->Args + ThreadIndex;
+		Args->M1 = Predictions;
+		Args->M2 = Labels;
+		Args->Float = 0.0f;
+		Args->Start = ThreadIndex;
+		Args->Stride = MatrixOpJobs->NumThreads;
 		DWORD ThreadId;
-		thread_mse_args* Args = &ThreadArgs[Index];
-		Args->Labels = Labels;
-		Args->Predictions = Predictions;
-		Args->Result = 0.0f;
-		Args->Start = Index;
-		Args->Stride = NumThreads;
-		ThreadHandles[Index] = CreateThread( 
-			NULL, // default security attributes
-			0, // use default stack size  
-			ThreadMse, // thread function name
-			Args, // argument to thread function 
-			0, // use default creation flags 
-			&ThreadId // returns the thread identifier
+		MatrixOpJobs->Handles[ThreadIndex] = CreateThread(
+			NULL, 0, CrossEntropyForwardThread, Args, 0, &ThreadId 
 		);
 	}
-	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
+	WaitForMultipleObjects(
+		MatrixOpJobs->NumThreads, MatrixOpJobs->Handles, TRUE, INFINITE
+	);
 	float Sum = 0;
-	for(int Index = 0; Index < NumThreads; Index++)
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < MatrixOpJobs->NumThreads;
+		ThreadIndex++
+	)
 	{
-		thread_mse_args* Args = &ThreadArgs[Index];
-		Sum += Args->Result;
-	}
-	return (Sum / (float) Predictions.Length);
-}
-
-struct thread_cross_entropy_args
-{
-	vector_array Predictions;
-	vector_array Labels;
-	float Result;
-	int Start;
-	int Stride;
-};
-
-DWORD WINAPI ThreadCrossEntropy(void* VoidArgs)
-{
-	thread_cross_entropy_args* Args = (thread_cross_entropy_args*) VoidArgs;
-	vector_array Predictions = Args->Predictions;
-	vector_array Labels = Args->Labels;
-	float* Result = &Args->Result;
-	int Start = Args->Start;
-	int Stride = Args->Stride;
-
-	for(int Row = Start; Row < Predictions.Length; Row += Stride)
-	{
-		float* Prediction = GetVector(Predictions, Row);
-		float* Label = GetVector(Labels, Row);
-		for(
-			int ElementIndex = 0;
-			ElementIndex < Predictions.VectorLength;
-			ElementIndex++
-		)
-		{
-			*Result += (float) (
-				Label[ElementIndex] * log(Prediction[ElementIndex])
-			);
-		}
-	}
-	*Result = -1 * (*Result);
-	return 0;
-}
-
-float CrossEntropyLoss(
-	vector_array Predictions,
-	vector_array Labels,
-	HANDLE* ThreadHandles,
-	int NumThreads,
-	thread_cross_entropy_args* ThreadArgs
-)
-{
-	for(int Index = 0; Index < NumThreads; Index++)
-	{
-		DWORD ThreadId;
-		thread_cross_entropy_args* Args = &ThreadArgs[Index];
-		Args->Labels = Labels;
-		Args->Predictions = Predictions;
-		Args->Result = 0.0f;
-		Args->Start = Index;
-		Args->Stride = NumThreads;
-		ThreadHandles[Index] = CreateThread( 
-			NULL, // default security attributes
-			0, // use default stack size  
-			ThreadCrossEntropy, // thread function name
-			Args, // argument to thread function 
-			0, // use default creation flags 
-			&ThreadId // returns the thread identifier
-		);
-	}
-	WaitForMultipleObjects(NumThreads, ThreadHandles, TRUE, INFINITE);
-	float Sum = 0;
-	for(int Index = 0; Index < NumThreads; Index++)
-	{
-		thread_cross_entropy_args* Args = &ThreadArgs[Index];
-		Sum += Args->Result;
+		matrix_op_args* Args = MatrixOpJobs->Args + ThreadIndex;
+		Sum += Args->Float;
 	}
 	return Sum;
 }
 
-void MakeSpiralData(
-	int PointsPerClass,
-	int Dimensions,
-	int NumClasses,
-	vector_array** InputsResults,
-	vector_array** OutputsResults
+struct cross_entropy_softmax_train_data
+{
+	matrix LayerGradient;
+};
+
+void AllocCrossEntropySoftmaxTrain(
+	cross_entropy_softmax_train_data** Result, softmax_layer* SoftmaxLayer
 )
 {
-	// NOTE: this is for testing only
-	// NOTE: based on https://cs231n.github.io/neural-networks-case-study/
-	// NOTE: data comes normalized already
-	AllocVectorArray(NumClasses * PointsPerClass, Dimensions, InputsResults);
-	MakeVectorArray(NumClasses * PointsPerClass, NumClasses, OutputsResults);
-	InitSpiralData(
-		PointsPerClass,
-		Dimensions,
-		NumClasses,
-		*InputsResults,
-		*OutputsResults
+	cross_entropy_softmax_train_data* TrainData = (
+		(cross_entropy_softmax_train_data*) malloc(
+			sizeof(cross_entropy_softmax_train_data)
+		)
+	);
+
+	InitMatrix(
+		&TrainData->LayerGradient,
+		SoftmaxLayer->Intermediate.NumRows,
+		SoftmaxLayer->Intermediate.NumColumns
+	);
+	*Result = TrainData;
+}
+
+void CrossEntropySoftmaxBack(
+	matrix_op_jobs* MatrixOpJobs,
+	matrix* Predictions, 
+	matrix* Labels, 
+	cross_entropy_softmax_train_data* TrainData
+)
+{
+	// NOTE: Predictions is the output of softmax layer
+	// NOTE: Labels has dim k x m where k is the batch size and m is the # of 
+	// CONT: classes
+	MatrixSubtract(
+		MatrixOpJobs, Predictions, Labels, &TrainData->LayerGradient
 	);
 }
 
-int main(void)
+DWORD WINAPI MeanSquaredForwardThread(void* VoidArgs)
 {
-	/*
-	TODO: remove this silly temp data result reminder
-	[4.800000, 1.210000, 2.385000]
-	[8.900000, -1.810000, 0.200000]
+	matrix_op_args* Args = (matrix_op_args*) VoidArgs;
+	matrix* Predictions = Args->M1;
+	matrix* Labels = Args->M2;
+	int Start = Args->Start;
+	int Stride = Args->Stride;
 
-	[4.800000, -1.210000, 1.192500]
-	[8.900000, 1.810000, 0.100000]
-
-	[4.800000, 0.000000, 1.192500]
-	[8.900000, 1.810000, 0.100000]
-
-	[0.991837, 0.500000, 0.767188]
-	[0.999864, 0.859362, 0.524979]
-
-	[
-	[0.659001, 0.242433, 0.098566]
-	]
-	[
-	[0.576117, 0.211942, 0.211942]
-	]
-	*/
-
-	// NOTE: set up thread stuff so we don't have to do it on every layer of
-	// NOTE: the forward pass
-	// TODO: turn this into a function
-	int NumThreads = 4;
-	HANDLE* ThreadHandles = (HANDLE*) malloc(NumThreads * sizeof(HANDLE)); 
-	thread_dense_forward_args* DenseForwardArgs = (thread_dense_forward_args*) (
-		malloc(NumThreads * sizeof(thread_dense_forward_args))
-	);
-	thread_relu_forward_args* ReluForwardArgs = (thread_relu_forward_args*) (
-		malloc(NumThreads * sizeof(thread_relu_forward_args))
-	);
-	thread_sigmoid_forward_args* SigmoidForwardArgs = (
-		(thread_sigmoid_forward_args*) 
-		malloc(NumThreads * sizeof(thread_sigmoid_forward_args))
-	);
-	thread_softmax_forward_args* SoftmaxForwardArgs = (
-		(thread_softmax_forward_args*) 
-		malloc(NumThreads * sizeof(thread_softmax_forward_args))
-	);
-	thread_mse_args* MseArgs = (thread_mse_args*) (
-		malloc(NumThreads * sizeof(thread_mse_args))
-	);
-	thread_cross_entropy_args* CrossEntropyArgs = (thread_cross_entropy_args*) (
-		malloc(NumThreads * sizeof(thread_cross_entropy_args))
-	);
-
-	float Input1Data[4] = {1, 2, 3, 2.5};
-	float Input2Data[4] = {2.0f, 5.0f, -1.0f, 2.0f};
-	float Weights1Data[4] = {0.2f, 0.8f, -0.5f, 1.0f};
-	float Weights2Data[4] = {0.5f, -0.91f, 0.26f, -0.5f};
-	float Weights3Data[4] = {-0.26f, -0.27f, 0.17f, 0.87f};
-	float BiasData[3] = {2.0f, 3.0f, 0.5f};
-
-	vector_array* Inputs = NULL;
-	dense_layer* Layer1 = NULL;
-	dense_layer* Layer2 = NULL;
-	vector_array* Layer1Outputs = NULL;
-	vector_array* Layer2Outputs = NULL;	
-
-	AllocVectorArray(2, ARRAY_COUNT(Input1Data), &Inputs);
-	memcpy(GetVector(*Inputs, 0), &Input1Data[0], GetVectorDataSize(*Inputs));
-	memcpy(GetVector(*Inputs, 1), &Input2Data[0], GetVectorDataSize(*Inputs));
-
-	AllocDenseLayer(ARRAY_COUNT(Input1Data), ARRAY_COUNT(BiasData), &Layer1);
-	weights* Weights = Layer1->Weights;
-	memcpy(
-		GetVector(*Weights, 0), &Weights1Data[0], GetVectorDataSize(*Weights)
-	);
-	memcpy(
-		GetVector(*Weights, 1), &Weights2Data[0], GetVectorDataSize(*Weights)
-	);
-	memcpy(
-		GetVector(*Weights, 2), &Weights3Data[0], GetVectorDataSize(*Weights)
-	);
-
-	vector* Biases = Layer1->Biases;
-	memcpy(Biases->Data, &BiasData[0], GetVectorDataSize(*Biases));
-
-	float Layer2Weights1Data[3] = {1, 0, 0};
-	float Layer2Weights2Data[3] = {0, -1, 0};
-	float Layer2Weights3Data[3] = {0, 0, 0.5};
-	AllocDenseLayer(ARRAY_COUNT(BiasData), ARRAY_COUNT(BiasData), &Layer2);
-	Weights = Layer2->Weights;
-	memcpy(
-		GetVector(*Weights, 0),
-		&Layer2Weights1Data[0],
-		GetVectorDataSize(*Weights)
-	);
-	memcpy(
-		GetVector(*Weights, 1),
-		&Layer2Weights2Data[0],
-		GetVectorDataSize(*Weights)
-	);
-	memcpy(
-		GetVector(*Weights, 2),
-		&Layer2Weights3Data[0],
-		GetVectorDataSize(*Weights)
-	);
-	Biases = Layer2->Biases;
-	memset(Biases->Data, 0, GetVectorDataSize(*Biases));
-
-	vector_array* Labels = NULL;
-	AllocVectorArray(2, 3, &Labels);
-	float* Label = GetVector(*Labels, 0);
-	memset(Label, 0, GetVectorDataSize(*Labels));
-	Label[0] = 1.0f;
-	Label = GetVector(*Labels, 1);
-	memset(Label, 0, GetVectorDataSize(*Labels));
-	Label[1] = 1.0f;
-	
-	AllocLayerOutput(Inputs->Length, *Layer1, &Layer1Outputs);
-	AllocLayerOutput(Inputs->Length, *Layer2, &Layer2Outputs);
-
-	DenseForward(
-		*Inputs,
-		*Layer1,
-		Layer1Outputs,
-		ThreadHandles,
-		NumThreads,
-		DenseForwardArgs
-	);
-	PrintVectorArray(*Layer1Outputs);
-	DenseForward(
-		*Layer1Outputs,
-		*Layer2,
-		Layer2Outputs,
-		ThreadHandles,
-		NumThreads,
-		DenseForwardArgs
-	);
-	PrintVectorArray(*Layer2Outputs);
-	ReluForward(
-		*Layer2Outputs,
-		Layer2Outputs,
-		ThreadHandles,
-		NumThreads,
-		ReluForwardArgs
-	);
-	PrintVectorArray(*Layer2Outputs);
-	SigmoidForward(
-		*Layer2Outputs,
-		Layer2Outputs,
-		ThreadHandles,
-		NumThreads,
-		SigmoidForwardArgs
-	);
-	PrintVectorArray(*Layer2Outputs);
-	float MseResult = MeanSquaredError(
-		*Layer2Outputs,
-		*Labels,
-		ThreadHandles,
-		NumThreads,
-		MseArgs
-	);
-	printf("%f\n", MseResult);
-	printf("\n");
-
-	printf("RandInit test\n");
-	dense_layer* RandInitLayer = NULL;
-	MakeDenseLayer(
-		ARRAY_COUNT(Input1Data), ARRAY_COUNT(BiasData), &RandInitLayer
-	);
-	vector_array* Layer3Outputs = NULL;
-	AllocLayerOutput(Inputs->Length, *RandInitLayer, &Layer3Outputs);
-	DenseForward(
-		*Inputs,
-		*RandInitLayer,
-		Layer3Outputs,
-		ThreadHandles,
-		NumThreads,
-		DenseForwardArgs
-	);
-	PrintVectorArray(*Layer3Outputs);
-	printf("\n");
-
-	printf("SoftmaxForward test\n");
-	float SoftmaxData[3] = {2.0f, 1.0f, 0.1f};
-	float SoftmaxData2[3] = {1.0f, 0.0f, 0.0f};
-	vector_array* SoftmaxForwardInputs = NULL;
-	AllocVectorArray(2, 3, &SoftmaxForwardInputs);
-	memcpy(
-		GetVector(*SoftmaxForwardInputs, 0),
-		&SoftmaxData,
-		GetVectorDataSize(*SoftmaxForwardInputs)
-	);
-	memcpy(
-		GetVector(*SoftmaxForwardInputs, 1),
-		&SoftmaxData2,
-		GetVectorDataSize(*SoftmaxForwardInputs)
-	);
-	SoftmaxForward(
-		*SoftmaxForwardInputs,
-		SoftmaxForwardInputs,
-		ThreadHandles,
-		NumThreads,
-		SoftmaxForwardArgs
-	);
-	PrintVectorArray(*SoftmaxForwardInputs);
-	float CrossEntropyResult = CrossEntropyLoss(
-		*SoftmaxForwardInputs,
-		*Labels,
-		ThreadHandles,
-		NumThreads,
-		CrossEntropyArgs
-	);
-	printf("%f\n", CrossEntropyResult);
-	printf("\n");
-
-	// NOTE: for this test code, we don't need to free, but it's here if we need
-	// CONT: it and we might as well test it 
-	if(Inputs)
+	float Result = 0.0f;
+	for(uint32_t Row = Start; Row < Predictions->NumRows; Row += Stride)
 	{
-		FreeVectorArray(Inputs);		
-	}
-	if(Layer1)
-	{
-		FreeDenseLayer(Layer1);
-	}
-	if(Layer2)
-	{
-		FreeDenseLayer(Layer2);
-	}	
-	if(Layer1Outputs)
-	{
-		FreeVectorArray(Layer1Outputs);
-	}
-	if(Layer2Outputs)
-	{
-		FreeVectorArray(Layer2Outputs);	
-	}
-	if(Layer3Outputs)
-	{
-		FreeVectorArray(Layer3Outputs);
-	}
-
-#if 0
-	printf("\n");
-	vector_array* SpiralInputs = NULL;
-	vector_array* SpiralOutputs = NULL;
-	int PointsPerClass = 100;
-	int NumClasses = 3;
-	int Dimensions = 2;
-	MakeSpiralData(
-		PointsPerClass, Dimensions, NumClasses, &SpiralInputs, &SpiralOutputs
-	);
-	for(int ClassIndex = 0; ClassIndex < NumClasses; ClassIndex++)
-	{
-		for(int DataIndex = 0; DataIndex < SpiralInputs->Length; DataIndex++)
+		for(uint32_t Col = 0; Col < Predictions->NumColumns; Col++)
 		{
-			float* SpiralOutput = GetVector(*SpiralOutputs, DataIndex);
-			int Classification = ArgMax(
-				SpiralOutput, SpiralOutputs->VectorLength
+			Result += (float) pow(
+				(
+					GetMatrixElement(Predictions, Row, Col) - 
+					GetMatrixElement(Labels, Row, Col)
+				),
+				2
 			);
-			if(Classification == ClassIndex)
+		}
+	}
+	Args->Float = Result;
+	return 0;
+}
+
+float MeanSquaredForward(
+	matrix_op_jobs* MatrixOpJobs,
+	matrix* Predictions,
+	matrix* Labels
+)
+{
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < MatrixOpJobs->NumThreads;
+		ThreadIndex++
+	)
+	{
+		matrix_op_args* Args = MatrixOpJobs->Args + ThreadIndex;
+		Args->M1 = Predictions;
+		Args->M2 = Labels;
+		Args->Float = 0.0f;
+		Args->Start = ThreadIndex;
+		Args->Stride = MatrixOpJobs->NumThreads;
+		DWORD ThreadId;
+		MatrixOpJobs->Handles[ThreadIndex] = CreateThread(
+			NULL, 0, MeanSquaredForwardThread, Args, 0, &ThreadId 
+		);
+	}
+	WaitForMultipleObjects(
+		MatrixOpJobs->NumThreads, MatrixOpJobs->Handles, TRUE, INFINITE
+	);
+	float Sum = 0;
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < MatrixOpJobs->NumThreads;
+		ThreadIndex++
+	)
+	{
+		matrix_op_args* Args = MatrixOpJobs->Args + ThreadIndex;
+		Sum += Args->Float;
+	}
+	// NOTE: this definition of MSE with a two in the denominator helps cancel 
+	// CONT: out a two in the back derivation 
+	float Mean = Sum / (2 * Predictions->NumRows);
+	return Mean;
+}
+
+struct mse_train_data
+{
+	matrix LayerGradient;
+};
+
+void AllocMseTrainData(
+	mse_train_data** Result, uint32_t BatchSize, uint32_t PredictionDim
+)
+{
+	mse_train_data* TrainData = (mse_train_data*) malloc(
+		sizeof(mse_train_data)
+	);
+	InitMatrix(&TrainData->LayerGradient, BatchSize, PredictionDim);
+	*Result = TrainData;
+}
+
+void MeanSquaredBack(
+	matrix_op_jobs* MatrixOpJobs,
+	matrix* Predictions, 
+	matrix* Labels, 
+	mse_train_data* TrainData
+)
+{
+	MatrixSubtract(
+		MatrixOpJobs, Labels, Predictions, &TrainData->LayerGradient
+	);
+	MatrixScalarMult(
+		MatrixOpJobs,
+		1.0f / Predictions->NumColumns,
+		&TrainData->LayerGradient,
+		&TrainData->LayerGradient
+	);
+}
+
+typedef enum
+{
+	LayerType_Dense,
+	LayerType_Relu,
+	LayerType_Softmax,
+	LayerType_CrossEntropy,
+	LayerType_SoftmaxCrossEntropy,
+	LayerType_Mse,
+	LayerType_Count
+} layer_type;
+
+struct layer_link;
+struct layer_link
+{
+	layer_type Type;
+	void* Data;
+	matrix* Output;
+	layer_link* Next;
+	layer_link* Previous;
+};
+
+struct neural_net
+{
+	uint32_t NumLayers;
+	uint32_t BatchSize;
+	uint32_t InputDim;
+	layer_link* FirstLink;
+	layer_link* LastLink;
+	matrix_op_jobs* MatrixOpJobs;
+};
+
+void AllocNeuralNet(
+	neural_net** Result,
+	uint32_t BatchSize,
+	uint32_t InputDim,
+	uint32_t NumThreads
+)
+{
+	neural_net* NeuralNet = (neural_net*) malloc(sizeof(neural_net));
+	*NeuralNet = {};
+	NeuralNet->BatchSize = BatchSize;
+	NeuralNet->InputDim = InputDim;
+	AllocMatrixOpJobs(&NeuralNet->MatrixOpJobs, NumThreads);
+	*Result = NeuralNet;
+}
+
+uint32_t AddLayerLink(neural_net* NeuralNet, layer_type LayerType)
+{
+	layer_link* LayerLink = (layer_link*) malloc(sizeof(layer_link));
+	*LayerLink = {};
+	LayerLink->Type = LayerType;
+	uint32_t InputDim = NeuralNet->LastLink->Output->NumColumns;
+	NeuralNet->LastLink->Next = LayerLink;
+	LayerLink->Previous = NeuralNet->LastLink;
+	LayerLink->Next = NULL;
+	NeuralNet->LastLink = LayerLink;
+	NeuralNet->NumLayers++;
+
+	return InputDim;
+}
+
+void AddDense(neural_net* NeuralNet, uint32_t OutputDim)
+{
+	layer_link* LayerLink = (layer_link*) malloc(sizeof(layer_link));
+	*LayerLink = {};
+	uint32_t InputDim;
+	if(NeuralNet->NumLayers == 0)
+	{
+		InputDim = NeuralNet->InputDim;
+		NeuralNet->FirstLink = LayerLink;
+		NeuralNet->LastLink = LayerLink;
+		LayerLink->Next = NULL;
+		LayerLink->Previous = NULL;
+	}
+	else
+	{
+		InputDim = NeuralNet->LastLink->Output->NumColumns;
+		LayerLink->Previous = NeuralNet->LastLink;
+		NeuralNet->LastLink->Next = LayerLink;
+		NeuralNet->LastLink = LayerLink;
+	}
+
+	LayerLink->Type = LayerType_Dense;
+	AllocDenseLayer(
+		(dense_layer**) &LayerLink->Data, 
+		InputDim,
+		OutputDim
+	);
+	AllocMatrix(&LayerLink->Output, NeuralNet->BatchSize, OutputDim);
+
+	NeuralNet->NumLayers++;
+}
+
+void AddRelu(neural_net* NeuralNet)
+{
+	uint32_t InputDim = AddLayerLink(NeuralNet, LayerType_Relu);
+	layer_link* LayerLink = NeuralNet->LastLink;
+
+	AllocMatrix(&LayerLink->Output, NeuralNet->BatchSize, InputDim);
+}
+
+void AddSoftmax(neural_net* NeuralNet)
+{
+	uint32_t InputDim = AddLayerLink(NeuralNet, LayerType_Softmax);
+	layer_link* LayerLink = NeuralNet->LastLink;
+
+	AllocSoftmaxLayer(
+		(softmax_layer**) &LayerLink->Data, NeuralNet->BatchSize, InputDim
+	);
+	AllocMatrix(&LayerLink->Output, NeuralNet->BatchSize, InputDim);
+}
+
+void AddCrossEntropy(neural_net* NeuralNet)
+{
+	AddLayerLink(NeuralNet, LayerType_CrossEntropy);
+}
+
+void AddMeanSquared(neural_net* NeuralNet)
+{
+	AddLayerLink(NeuralNet, LayerType_Mse);
+}
+
+void NeuralNetForward(
+	neural_net* NeuralNet,
+	matrix* Inputs,
+	matrix* Labels,
+	matrix** Predictions,
+	float* LossResult
+)
+{
+	*Predictions = NULL;
+	matrix* Outputs = NULL;
+	float Loss = -1.0f;
+	layer_link* LayerLink = NeuralNet->FirstLink;
+	matrix_op_jobs* MatrixOpJobs = NeuralNet->MatrixOpJobs;
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < NeuralNet->NumLayers;
+		LayerIndex++
+	)
+	{
+		Outputs = LayerLink->Output;
+		switch(LayerLink->Type)
+		{
+			case(LayerType_Dense):
 			{
-				float* SpiralInput = GetVector(*SpiralInputs, DataIndex); 
-				for(
-					int ElementIndex = 0;
-					ElementIndex < Dimensions;
-					ElementIndex++
-				)
+				DenseForward(
+					MatrixOpJobs,
+					Inputs,
+					(dense_layer*) LayerLink->Data,
+					Outputs
+				);
+				break;
+			}
+			case(LayerType_Relu):
+			{
+				ReluForward(MatrixOpJobs, Inputs, Outputs);
+				break;
+			}
+			case(LayerType_Softmax):
+			{
+				SoftmaxForward(
+					MatrixOpJobs,
+					(softmax_layer*) LayerLink->Data,
+					Inputs,
+					Outputs
+				);
+				break;
+			}
+
+			// NOTE: for NNs with loss layers, predictions must be captured 
+			// CONT: with inputs the end of the loop since outputs 
+			// CONT: will be updated to NULL
+			case(LayerType_CrossEntropy):
+			{
+				if(Predictions)
 				{
-					printf("%f,", SpiralInput[ElementIndex]);
+					*Predictions = Inputs;
 				}
-				printf("%d", Classification);
-				printf("\n");
+
+				if(Labels != NULL)
+				{
+					Loss = CrossEntropyForward(MatrixOpJobs, Inputs, Labels);
+				}
+				break;
+			}
+			case(LayerType_Mse):
+			{
+				if(Predictions)
+				{
+					*Predictions = Inputs;
+				}
+				if(Labels != NULL)
+				{
+					Loss = MeanSquaredForward(MatrixOpJobs, Inputs, Labels);
+				}
+				break;
+			}
+
+			default:
+			{				
+				break;
 			}
 		}
-		printf("\n\n");
+		Inputs = Outputs;
+		LayerLink = LayerLink->Next;
 	}
-#endif 
-	return 0;
+
+	if(LossResult)
+	{
+		*LossResult = Loss;
+	}
+	if(Predictions != NULL && *Predictions == NULL)
+	{
+		// NOTE: if we didn't have a loss function, this is where we get the
+		// CONT: predictions from
+		*Predictions = Outputs;
+	}
+}
+
+struct neural_net_trainer
+{
+	neural_net* NeuralNet;
+	void** TrainDataArray;
+};
+
+void AllocNeuralNetTrainer(
+	neural_net_trainer** Result,
+	neural_net* NeuralNet,
+	float LearningRate,
+	layer_type LossLayer
+)
+{
+	switch(LossLayer)
+	{
+		case(LayerType_Mse):
+		{
+			AddMeanSquared(NeuralNet);
+			break;
+		}
+		case(LayerType_CrossEntropy):
+		{
+			AddCrossEntropy(NeuralNet);
+			break;
+		}
+		default:
+		{
+			break;
+		}
+	}
+
+	neural_net_trainer* Trainer = (neural_net_trainer*) (
+		malloc(sizeof(neural_net_trainer))
+	);
+	Trainer->NeuralNet = NeuralNet;
+	void** TrainDataArray = (void**) (
+		malloc(NeuralNet->NumLayers * sizeof(void*))
+	);
+	Trainer->TrainDataArray = TrainDataArray;
+
+	layer_link* LayerLink = NeuralNet->FirstLink;
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < NeuralNet->NumLayers;
+		LayerIndex++
+	)
+	{
+		switch(LayerLink->Type)
+		{
+			case(LayerType_Dense):
+			{
+				AllocDenseLayerTrain(
+					(dense_layer_train_data**) &TrainDataArray[LayerIndex],
+					(dense_layer*) LayerLink->Data,
+					LearningRate,
+					NeuralNet->BatchSize
+				);
+				break;
+			}
+			case(LayerType_Relu):
+			{
+				layer_link* PreviousLayer = LayerLink->Previous;
+				matrix* PrevOutputs = PreviousLayer->Output;
+				AllocReluTrain(
+					(relu_train_data**) &TrainDataArray[LayerIndex],
+					NeuralNet->BatchSize,
+					PrevOutputs->NumColumns
+				);
+				break;
+			}
+			case(LayerType_Softmax):
+			{
+				break;
+			}
+			case(LayerType_CrossEntropy):
+			{
+				layer_link* PreviousLayer = LayerLink->Previous;
+				softmax_layer* SoftmaxLayer = (softmax_layer*)(
+					PreviousLayer->Data
+				);
+
+				AllocCrossEntropySoftmaxTrain(
+					(
+						(cross_entropy_softmax_train_data**) 
+						&TrainDataArray[LayerIndex]
+					),
+					SoftmaxLayer
+				);
+				break;
+			}
+			case(LayerType_Mse):
+			{
+				layer_link* PreviousLayer = LayerLink->Previous;
+				matrix* PrevOutputs = PreviousLayer->Output;
+				AllocMseTrainData(
+					(mse_train_data**) &TrainDataArray[LayerIndex],
+					NeuralNet->BatchSize,
+					PrevOutputs->NumColumns
+				);
+				break;
+			}
+			default:
+			{				
+				break;
+			}
+		}
+		LayerLink = LayerLink->Next;
+	}
+
+	*Result = Trainer;
+}
+
+void TrainNeuralNet(
+	neural_net_trainer* Trainer,
+	neural_net* NeuralNet,
+	matrix* Inputs,
+	matrix* Labels,
+	uint32_t Epochs,
+	bool InitDenseLayers = true,
+	bool PrintStatus = false
+)
+{
+	if(InitDenseLayers)
+	{
+		layer_link* LayerLink = NeuralNet->FirstLink;
+		for(
+			uint32_t LayerIndex = 0;
+			LayerIndex < NeuralNet->NumLayers;
+			LayerIndex++
+		)
+		{
+			switch(LayerLink->Type)
+			{
+				case(LayerType_Dense):
+				{
+					dense_layer* DenseLayer = (dense_layer*) LayerLink->Data;
+					FillRandomMatrix(&DenseLayer->Weights);
+					FillRandomMatrix(&DenseLayer->Bias);
+					break;
+				}
+				default:
+				{				
+					break;
+				}
+			}
+			LayerLink = LayerLink->Next;
+		}
+	}
+
+	matrix_op_jobs* MatrixOpJobs = NeuralNet->MatrixOpJobs;
+	layer_link* LayerLink;
+	float Loss;
+	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
+	{
+		matrix* Predictions;
+		NeuralNetForward(
+			NeuralNet,
+			Inputs,
+			Labels,
+			&Predictions,
+			&Loss
+		);
+		if(PrintStatus)
+		{
+			printf("Epoch %d Loss: %f\n", Epoch, Loss);
+		}
+
+		matrix* NextLayerGradient = NULL;
+		LayerLink = NeuralNet->LastLink;
+		for(
+			int32_t LayerIndex = ((int32_t) NeuralNet->NumLayers) - 1;
+			LayerIndex >= 0;
+			LayerIndex--
+		)
+		{
+			void* TrainData = Trainer->TrainDataArray[LayerIndex];
+			layer_link* PreviousLayer = LayerLink->Previous;
+			matrix* LayerInputs;
+			if(PreviousLayer != NULL)
+			{
+				LayerInputs = PreviousLayer->Output;
+			}
+			else
+			{
+				LayerInputs = Inputs;
+			}
+			switch(LayerLink->Type)
+			{
+				case(LayerType_Dense):
+				{
+					dense_layer_train_data* DenseTrain = (
+						(dense_layer_train_data*) TrainData
+					);
+					DenseBack(
+						MatrixOpJobs,
+						LayerInputs,
+						NextLayerGradient,
+						(dense_layer*) LayerLink->Data,
+						DenseTrain
+					);
+					NextLayerGradient = &DenseTrain->LayerGradient;
+					break;
+				}
+				case(LayerType_Relu):
+				{
+					relu_train_data* ReluTrain = (relu_train_data*) TrainData;
+					ReluBack(
+						MatrixOpJobs,
+						LayerInputs,
+						NextLayerGradient,
+						ReluTrain
+					);
+					NextLayerGradient = &ReluTrain->LayerGradient;
+					break;
+				}
+				case(LayerType_Softmax):
+				{
+					break;
+				}
+				case(LayerType_Mse):
+				{
+					mse_train_data* MseTrain = (mse_train_data*) TrainData;
+
+					MeanSquaredBack(
+						MatrixOpJobs,
+						Predictions,
+						Labels,
+						MseTrain
+					);
+					NextLayerGradient = &MseTrain->LayerGradient;
+					break;
+				}
+				case(LayerType_CrossEntropy):
+				{
+					cross_entropy_softmax_train_data* XEntropyTrain = (
+						(cross_entropy_softmax_train_data*) TrainData
+					);
+
+					CrossEntropySoftmaxBack(
+						MatrixOpJobs,
+						Predictions, 
+						Labels,
+						XEntropyTrain
+					);
+					NextLayerGradient = &XEntropyTrain->LayerGradient;
+					break;
+				}
+				default:
+				{
+					break;
+				}
+			}
+			LayerLink = PreviousLayer;
+		}
+	}
+}
+
+float TopOneAccuracy(neural_net* NeuralNet, matrix* Inputs, matrix* Labels)
+{
+	matrix* Predictions;
+	NeuralNetForward(
+		NeuralNet,
+		Inputs,
+		Labels,
+		&Predictions,
+		NULL
+	);
+	
+	uint32_t TotalCorrect = 0;
+	for(
+		uint32_t SampleIndex = 0;
+		SampleIndex < Predictions->NumRows;
+		SampleIndex++
+	)
+	{
+		uint32_t PredictedLabel = ArgMax(
+			GetMatrixRow(Predictions, SampleIndex), Predictions->NumColumns
+		);
+		uint32_t ActualLabel = ArgMax(
+			GetMatrixRow(Labels, SampleIndex), Predictions->NumColumns
+		);
+		if(PredictedLabel == ActualLabel)
+		{
+			TotalCorrect++;
+		}
+	}
+
+	return (float) TotalCorrect / (float) Predictions->NumRows;
 }
