@@ -143,9 +143,9 @@ inline float RandUnity()
 	return ((float) (rand() % RAND_MAX)) / ((float) RAND_MAX);
 }
 
-void FillRandomMatrix(matrix* Matrix)
+void FillRandomMatrix(matrix* Matrix, float Range)
 {
-	// NOTE: fills matrix with values randomly between 0.0f and 0.001f
+	// NOTE: fills matrix with values randomly between 0.0f and Range
 	// NOTE: values should never be 0.0f exactly
 	for(uint32_t Row = 0; Row < Matrix->NumRows; Row++)
 	{
@@ -155,10 +155,92 @@ void FillRandomMatrix(matrix* Matrix)
 			do
 			{
 				// NOTE: need small values to prevent runaway
-				Value = 0.001f * RandUnity();
+				Value = Range * RandUnity();
 			} while(Value == 0.0f);
 			SetMatrixElement(Matrix, Row, Col, Value);
 		}
+	}
+}
+
+struct linked_int;
+struct linked_int
+{
+	int Value;
+	linked_int* Next;
+};
+
+struct linked_int_list
+{
+	linked_int* Head;
+	uint32_t Length;
+};
+
+struct int_shuffler
+{
+	linked_int_list List;
+	uint32_t Range;
+	linked_int* Cells;
+	int* Result;
+};
+
+int_shuffler MakeIntShuffler(uint32_t Range)
+{
+	int_shuffler IntShuffler = {};
+	IntShuffler.Range = Range;
+	IntShuffler.Cells = (linked_int*) malloc(sizeof(linked_int) * Range);
+	IntShuffler.Result = (int*) malloc(sizeof(int) * Range);
+	return IntShuffler;
+}
+
+void FreeIntShuffler(int_shuffler IntShuffler)
+{
+	free(IntShuffler.Cells);
+	free(IntShuffler.Result);
+}
+
+void ShuffleInts(int_shuffler* IntShuffler)
+{
+	// NOTE: needed for mini batch shuffling
+	linked_int_list* List = &IntShuffler->List;
+	List->Length = 0;
+
+	linked_int* Previous = IntShuffler->Cells + 0;
+	Previous->Value = 0;
+	List->Head = Previous;
+	List->Length++;
+	linked_int* Current = Previous;
+	for(uint32_t Index = 1; Index < IntShuffler->Range; Index++)
+	{
+		Current = IntShuffler->Cells + Index;
+		Current->Value = Index;
+
+		Previous->Next = Current;
+		Previous = Current;
+		List->Length++;
+	}
+	Current->Next = NULL;
+
+	int ArrayIndex = 0;
+	for(uint32_t Index = 0; Index < IntShuffler->Range; Index++)
+	{
+		int Value = rand() % List->Length;
+		Current = List->Head;
+		for(int LinkIndex = 0; LinkIndex < Value; LinkIndex++)	
+		{
+			Previous = Current;
+			Current = Current->Next;
+		}
+		if(Current == List->Head)
+		{
+			List->Head = Current->Next;
+		}
+		else
+		{
+			Previous->Next = Current->Next;
+		}
+
+		List->Length--;
+		IntShuffler->Result[ArrayIndex++] = Current->Value;
 	}
 }
 
@@ -1248,7 +1330,9 @@ uint32_t AddLayerLink(neural_net* NeuralNet, layer_type LayerType)
 	return InputDim;
 }
 
-void AddDense(neural_net* NeuralNet, uint32_t OutputDim)
+void AddDense(
+	neural_net* NeuralNet, uint32_t OutputDim, dense_layer* DenseLayer = NULL
+)
 {
 	layer_link* LayerLink = (layer_link*) malloc(sizeof(layer_link));
 	*LayerLink = {};
@@ -1270,11 +1354,18 @@ void AddDense(neural_net* NeuralNet, uint32_t OutputDim)
 	}
 
 	LayerLink->Type = LayerType_Dense;
-	AllocDenseLayer(
-		(dense_layer**) &LayerLink->Data, 
-		InputDim,
-		OutputDim
-	);
+	if(DenseLayer)
+	{
+		LayerLink->Data = DenseLayer;
+	}
+	else
+	{
+		AllocDenseLayer(
+			(dense_layer**) &LayerLink->Data, 
+			InputDim,
+			OutputDim
+		);
+	}
 	AllocMatrix(&LayerLink->Output, NeuralNet->BatchSize, OutputDim);
 
 	NeuralNet->NumLayers++;
@@ -1309,6 +1400,71 @@ void AddMeanSquared(neural_net* NeuralNet)
 	AddLayerLink(NeuralNet, LayerType_Mse);
 }
 
+void ResizedNeuralNet(
+	neural_net** Result, neural_net* Source, uint32_t NewBatchSize
+)
+{
+	// NOTE: this is needed b/c the result from each layer is preallocated
+	// CONT: so we can't use different batch sizes with the same neural net.
+	// CONT: Instead of copying all the data, I am using this function to 
+	// CONT: create the new output matrices and reusing the dense_layer structs
+	// CONT: from the Source net. This is a valuable approach for situations 
+	// CONT: where you are testing in a loop, e.g. if you check the full-batch
+	// CONT: loss after doing all the mini batches in an epoch. It's also a 
+	// CONT: slightly smaller memory profile
+
+	AllocNeuralNet(
+		Result,
+		NewBatchSize,
+		Source->InputDim,
+		Source->MatrixOpJobs->NumThreads
+	);
+	neural_net* NeuralNet = *Result;
+
+	layer_link* LayerLink = Source->FirstLink;
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < Source->NumLayers;
+		LayerIndex++
+	)
+	{
+		switch(LayerLink->Type)
+		{
+			case(LayerType_Dense):
+			{
+				dense_layer* DenseLayer = (dense_layer*) LayerLink->Data;
+				AddDense(NeuralNet, DenseLayer->Weights.NumColumns, DenseLayer);
+				break;
+			}
+			case(LayerType_Relu):
+			{
+				AddRelu(NeuralNet);
+				break;
+			}
+			case(LayerType_Softmax):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_CrossEntropy):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_Mse):
+			{
+				AddMeanSquared(NeuralNet);
+				break;
+			}
+			default:
+			{				
+				break;
+			}
+		}
+		LayerLink = LayerLink->Next;
+	}
+}
+
 void NeuralNetForward(
 	neural_net* NeuralNet,
 	matrix* Inputs,
@@ -1317,7 +1473,10 @@ void NeuralNetForward(
 	float* LossResult
 )
 {
-	*Predictions = NULL;
+	if(Predictions)
+	{
+		*Predictions = NULL;
+	}
 	matrix* Outputs = NULL;
 	float Loss = -1.0f;
 	layer_link* LayerLink = NeuralNet->FirstLink;
@@ -1519,41 +1678,54 @@ void AllocNeuralNetTrainer(
 	*Result = Trainer;
 }
 
+void InitDenseLayers(neural_net* NeuralNet)
+{
+	layer_link* LayerLink = NeuralNet->FirstLink;
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < NeuralNet->NumLayers;
+		LayerIndex++
+	)
+	{
+		switch(LayerLink->Type)
+		{
+			case(LayerType_Dense):
+			{
+				dense_layer* DenseLayer = (dense_layer*) LayerLink->Data;
+				FillRandomMatrix(
+					&DenseLayer->Weights,
+					(
+						1.0f / (
+							DenseLayer->Weights.NumRows + 
+							DenseLayer->Weights.NumColumns
+						)
+					)
+				);
+				FillRandomMatrix(&DenseLayer->Bias, 0.001f);
+				break;
+			}
+			default:
+			{				
+				break;
+			}
+		}
+		LayerLink = LayerLink->Next;
+	}
+}
+
 void TrainNeuralNet(
 	neural_net_trainer* Trainer,
 	neural_net* NeuralNet,
 	matrix* Inputs,
 	matrix* Labels,
 	uint32_t Epochs,
-	bool InitDenseLayers = true,
+	bool ShouldInitDenseLayers = true,
 	bool PrintStatus = false
 )
 {
-	if(InitDenseLayers)
+	if(ShouldInitDenseLayers)
 	{
-		layer_link* LayerLink = NeuralNet->FirstLink;
-		for(
-			uint32_t LayerIndex = 0;
-			LayerIndex < NeuralNet->NumLayers;
-			LayerIndex++
-		)
-		{
-			switch(LayerLink->Type)
-			{
-				case(LayerType_Dense):
-				{
-					dense_layer* DenseLayer = (dense_layer*) LayerLink->Data;
-					FillRandomMatrix(&DenseLayer->Weights);
-					FillRandomMatrix(&DenseLayer->Bias);
-					break;
-				}
-				default:
-				{				
-					break;
-				}
-			}
-			LayerLink = LayerLink->Next;
-		}
+		InitDenseLayers(NeuralNet);
 	}
 
 	matrix_op_jobs* MatrixOpJobs = NeuralNet->MatrixOpJobs;
