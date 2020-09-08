@@ -244,6 +244,38 @@ void ShuffleInts(int_shuffler* IntShuffler)
 	}
 }
 
+void WriteMatrix(matrix* Matrix, FILE* File)
+{
+	fwrite(Matrix->Data, 1, GetMatrixDataSize(Matrix), File);
+}
+
+void SaveMatrix(matrix* Matrix, char* FilePath)
+{
+	// NOTE: a way to save matrix data to a file for use in unit tests
+	FILE* File;
+	fopen_s(&File, FilePath, "wb");
+	WriteMatrix(Matrix, File);
+	fclose(File);
+}
+
+bool LoadMatrix(matrix* Matrix, char* FilePath)
+{
+	// NOTE: a way to load a matrix from a file for comparison to unit test 
+	// CONT: results
+	FILE* File;
+	fopen_s(&File, FilePath, "rb");
+	size_t BytesRead = fread(Matrix->Data, 1, GetMatrixDataSize(Matrix), File);
+	fclose(File);
+	return BytesRead == GetMatrixDataSize(Matrix);
+}
+
+bool IsBigEndian(void)
+{
+	uint32_t Value = 0xAABBCCDD;
+	uint8_t* ValuePtr = (uint8_t*) &Value;
+	return *ValuePtr == 0xAA;
+}
+
 void PrintMatrix(matrix* Matrix)
 {
 	printf("[\n");
@@ -1867,4 +1899,168 @@ float TopOneAccuracy(neural_net* NeuralNet, matrix* Inputs, matrix* Labels)
 	}
 
 	return (float) TotalCorrect / (float) Predictions->NumRows;
+}
+
+#pragma pack(push, 1)
+struct model_header
+{
+	uint32_t NumLayers;
+	uint32_t InputDim;
+};
+
+struct layer_header
+{
+	layer_type Type;
+};
+#pragma pack(pop)
+
+void SaveNeuralNet(neural_net* NeuralNet, char* FilePath)
+{
+	FILE* File;
+	fopen_s(&File, FilePath, "wb");
+	
+	model_header ModelHeader = {};
+	ModelHeader.NumLayers = NeuralNet->NumLayers;
+	ModelHeader.InputDim = NeuralNet->InputDim;
+	fwrite(&ModelHeader, 1, sizeof(model_header), File);
+
+	layer_link* LayerLink = NeuralNet->FirstLink;
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < NeuralNet->NumLayers;
+		LayerIndex++
+	)
+	{
+		layer_header LayerHeader = {};
+		LayerHeader.Type = LayerLink->Type;
+
+		switch(LayerLink->Type)
+		{
+			case(LayerType_Dense):
+			{
+				dense_layer* DenseLayer = (dense_layer*) LayerLink->Data;
+
+				fwrite(&LayerHeader, 1, sizeof(layer_header), File);
+
+				fwrite(&DenseLayer->Weights, 1, sizeof(matrix), File);
+				fwrite(&DenseLayer->Bias, 1, sizeof(matrix), File);
+
+				WriteMatrix(&DenseLayer->Weights, File);
+				WriteMatrix(&DenseLayer->Bias, File);
+				break;
+			}
+			case(LayerType_Relu):
+			{
+				fwrite(&LayerHeader, 1, sizeof(layer_header), File);
+				break;
+			}
+			case(LayerType_Softmax):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_CrossEntropy):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_Mse):
+			{
+				fwrite(&LayerHeader, 1, sizeof(layer_header), File);
+				break;
+			}
+			default:
+			{				
+				break;
+			}
+		}
+		LayerLink = LayerLink->Next;
+	}
+
+	fclose(File);
+}
+
+void LoadNeuralNet(
+	neural_net** Result, char* FilePath, uint32_t BatchSize, uint32_t NumThreads
+)
+{
+	FILE* File;
+	fopen_s(&File, FilePath, "rb");
+	
+	model_header ModelHeader = {};
+	fread(&ModelHeader, 1, sizeof(model_header), File);
+
+	AllocNeuralNet(
+		Result,
+		BatchSize,
+		ModelHeader.InputDim,
+		NumThreads
+	);
+	neural_net* NeuralNet = *Result;
+
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < ModelHeader.NumLayers;
+		LayerIndex++
+	)
+	{
+		layer_header LayerHeader = {};
+		fread(&LayerHeader, 1, sizeof(layer_header), File);
+
+		switch(LayerHeader.Type)
+		{
+			case(LayerType_Dense):
+			{
+				matrix WeightsInfo;
+				fread(&WeightsInfo, 1, sizeof(matrix), File);
+				matrix BiasInfo;
+				fread(&BiasInfo, 1, sizeof(matrix), File);
+
+				AddDense(NeuralNet, WeightsInfo.NumColumns);
+
+				dense_layer* DenseLayer = (dense_layer*)(
+					NeuralNet->LastLink->Data
+				);
+				fread(
+					DenseLayer->Weights.Data,
+					1,
+					GetMatrixDataSize(&DenseLayer->Weights),
+					File
+				);
+				fread(
+					DenseLayer->Bias.Data,
+					1,
+					GetMatrixDataSize(&DenseLayer->Bias),
+					File
+				);
+				break;
+			}
+			case(LayerType_Relu):
+			{
+				AddRelu(NeuralNet);
+				break;
+			}
+			case(LayerType_Softmax):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_CrossEntropy):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_Mse):
+			{
+				AddMeanSquared(NeuralNet);
+				break;
+			}
+			default:
+			{				
+				break;
+			}
+		}
+	}
+
+	fclose(File);
 }
