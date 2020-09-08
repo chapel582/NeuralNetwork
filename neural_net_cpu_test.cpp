@@ -2042,6 +2042,15 @@ int main(int argc, char* argv[])
 			printf("Loaded NN TestAccuracy = %f\n", LoadedNnTestAccuracy);
 
 			// SECTION STOP: test model saving and loading
+
+			// SECTION START: test freeing neural nets
+			// TODO: add a check for available memory before and after
+			FreeNeuralNetTrainer(Trainer);
+			FreeNeuralNet(NeuralNet);
+			FreeNeuralNet(LoadedNeuralNet);
+			FreeResizedNeuralNet(FullBatchNnViewer);
+			FreeResizedNeuralNet(TestNnViewer);
+			// SECTION STOP: test freeing neural nets
 		}
 		else
 		{

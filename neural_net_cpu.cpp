@@ -57,6 +57,17 @@ void AllocMatrix(matrix** Result, uint32_t NumRows, uint32_t NumColumns)
 	*Result = Matrix;
 }
 
+void FreeMatrixData(matrix Matrix)
+{
+	free(Matrix.Data);
+}
+
+void FreeMatrix(matrix* Matrix)
+{
+	FreeMatrixData(*Matrix);
+	free(Matrix);
+}
+
 void AllocMultResultMatrix(matrix** Result, matrix* M1, matrix* M2)
 {
 	// NOTE: allocates a matrix that would result from the matrix multiplication
@@ -809,6 +820,13 @@ void AllocDenseLayer(
 	*Result = DenseLayer;
 }
 
+void FreeDenseLayer(dense_layer* DenseLayer)
+{
+	FreeMatrixData(DenseLayer->Weights);
+	FreeMatrixData(DenseLayer->Bias);
+	free(DenseLayer);
+}
+
 struct dense_layer_train_data
 {
 	matrix WeightsDelta;
@@ -842,6 +860,14 @@ void AllocDenseLayerTrain(
 		&TrainData->LayerGradient, BatchSize, DenseLayer->Weights.NumRows
 	);
 	*Result = TrainData;
+}
+
+void FreeDenseLayerTrain(dense_layer_train_data* TrainData)
+{
+	FreeMatrixData(TrainData->WeightsDelta);
+	FreeMatrixData(TrainData->BiasDelta);
+	FreeMatrixData(TrainData->LayerGradient);
+	free(TrainData);
 }
 
 void DenseForward(
@@ -915,6 +941,12 @@ void AllocReluTrain(
 	);
 	InitMatrix(&TrainData->LayerGradient, BatchSize, InputDim);
 	*Result = TrainData;
+}
+
+void FreeReluTrain(relu_train_data* TrainData)
+{
+	FreeMatrixData(TrainData->LayerGradient);
+	free(TrainData);
 }
 
 DWORD WINAPI ReluForwardThread(void* VoidArgs)
@@ -1283,6 +1315,12 @@ void AllocMseTrainData(
 	*Result = TrainData;
 }
 
+void FreeMseTrainData(mse_train_data* TrainData)
+{
+	FreeMatrixData(TrainData->LayerGradient);
+	free(TrainData);
+}
+
 void MeanSquaredBack(
 	matrix_op_jobs* MatrixOpJobs,
 	matrix* Predictions, 
@@ -1362,6 +1400,15 @@ uint32_t AddLayerLink(neural_net* NeuralNet, layer_type LayerType)
 	return InputDim;
 }
 
+void FreeLayerLink(layer_link* LayerLink)
+{
+	if(LayerLink->Output != NULL)
+	{
+		FreeMatrix(LayerLink->Output);
+	}
+	free(LayerLink);
+}
+
 void AddDense(
 	neural_net* NeuralNet, uint32_t OutputDim, dense_layer* DenseLayer = NULL
 )
@@ -1432,6 +1479,53 @@ void AddMeanSquared(neural_net* NeuralNet)
 	AddLayerLink(NeuralNet, LayerType_Mse);
 }
 
+void FreeNeuralNet(neural_net* NeuralNet)
+{
+	layer_link* LayerLink = NeuralNet->FirstLink;
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < NeuralNet->NumLayers;
+		LayerIndex++
+	)
+	{
+		switch(LayerLink->Type)
+		{
+			case(LayerType_Dense):
+			{
+				dense_layer* DenseLayer = (dense_layer*) LayerLink->Data;
+				FreeDenseLayer(DenseLayer);
+				break;
+			}
+			case(LayerType_Relu):
+			{				
+				break;
+			}
+			case(LayerType_Softmax):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_CrossEntropy):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_Mse):
+			{
+				break;
+			}
+			default:
+			{				
+				break;
+			}
+		}
+
+		layer_link* Next = LayerLink->Next;
+		FreeLayerLink(LayerLink);
+		LayerLink = Next;
+	}
+}
+
 void ResizedNeuralNet(
 	neural_net** Result, neural_net* Source, uint32_t NewBatchSize
 )
@@ -1494,6 +1588,21 @@ void ResizedNeuralNet(
 			}
 		}
 		LayerLink = LayerLink->Next;
+	}
+}
+
+void FreeResizedNeuralNet(neural_net* NeuralNet)
+{
+	layer_link* LayerLink = NeuralNet->FirstLink;
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < NeuralNet->NumLayers;
+		LayerIndex++
+	)
+	{
+		layer_link* Next = LayerLink->Next;
+		FreeLayerLink(LayerLink);
+		LayerLink = Next;
 	}
 }
 
@@ -1708,6 +1817,63 @@ void AllocNeuralNetTrainer(
 	}
 
 	*Result = Trainer;
+}
+
+void FreeNeuralNetTrainer(neural_net_trainer* Trainer)
+{
+	// NOTE: trainers should be freed before their NNs
+	neural_net* NeuralNet = Trainer->NeuralNet;
+	void** TrainDataArray = Trainer->TrainDataArray;
+	layer_link* LayerLink = NeuralNet->FirstLink;
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < NeuralNet->NumLayers;
+		LayerIndex++
+	)
+	{
+		switch(LayerLink->Type)
+		{
+			case(LayerType_Dense):
+			{
+				FreeDenseLayerTrain(
+					(dense_layer_train_data*) TrainDataArray[LayerIndex]					
+				);
+				break;
+			}
+			case(LayerType_Relu):
+			{
+				FreeReluTrain(
+					(relu_train_data*) TrainDataArray[LayerIndex]
+				);
+				break;
+			}
+			case(LayerType_Softmax):
+			{
+				// TODO: implement
+				break;
+			}
+			case(LayerType_CrossEntropy):
+			{
+				// TODO: implement
+				break;
+			}
+			case(LayerType_Mse):
+			{
+				FreeMseTrainData(
+					(mse_train_data*) TrainDataArray[LayerIndex]
+				);
+				break;
+			}
+			default:
+			{
+				break;
+			}
+		}
+		LayerLink = LayerLink->Next;
+	}
+
+	free(TrainDataArray);
+	free(Trainer);
 }
 
 void InitDenseLayers(neural_net* NeuralNet)
