@@ -213,15 +213,15 @@ end:
 
 int main(int argc, char* argv[])
 {
-	char* TestDataDirectory;
+	char TestDataDirectory[260];
 	if(argc == 1)
 	{
 		printf("Assuming test data directory path is ../test_data\n");
-		TestDataDirectory = "../test_data";
+		strcpy_s(TestDataDirectory, sizeof(TestDataDirectory), "../test_data");
 	}
 	else if(argc > 1)
 	{
-		TestDataDirectory = argv[1];
+		strcpy_s(TestDataDirectory, sizeof(TestDataDirectory), argv[1]);
 		printf("TestDataDirectory is %s\n", TestDataDirectory);
 	}
 	else
@@ -705,7 +705,7 @@ int main(int argc, char* argv[])
 		SetMatrixElement(Inputs, 0, 0, -1.0f);
 		SetMatrixElement(Inputs, BatchSize - 1, NumClasses - 1, 20.0f);
 
-		matrix* Predictions;
+		matrix* Predictions = NULL;
 		AllocMatrix(&Predictions, BatchSize, NumClasses);
 
 		softmax_layer* SoftmaxLayer;
@@ -771,7 +771,7 @@ int main(int argc, char* argv[])
 		uint32_t BatchSize = 8;
 		uint32_t NumClasses = 4;
 
-		matrix* Predictions;
+		matrix* Predictions = NULL;
 		AllocMatrix(&Predictions, BatchSize, NumClasses);
 		FillOneHotMatrix(Predictions);
 		
@@ -1341,7 +1341,7 @@ int main(int argc, char* argv[])
 			100
 		);
 
-		matrix* Predictions;
+		matrix* Predictions = NULL;
 		NeuralNetForward(
 			NeuralNet,
 			Inputs,
@@ -1407,7 +1407,7 @@ int main(int argc, char* argv[])
 			100
 		);
 
-		matrix* Predictions;
+		matrix* Predictions = NULL;
 		NeuralNetForward(
 			NeuralNet,
 			Inputs,
@@ -1524,7 +1524,7 @@ int main(int argc, char* argv[])
 			sizeof(SecondLayerBias)
 		);
 		
-		matrix* Predictions;
+		matrix* Predictions = NULL;
 		NeuralNetForward(
 			NeuralNet,
 			Inputs,
@@ -1670,7 +1670,7 @@ int main(int argc, char* argv[])
 			false
 		);
 
-		matrix* Predictions;
+		matrix* Predictions = NULL;
 		NeuralNetForward(
 			NeuralNet,
 			Inputs,
@@ -1816,7 +1816,7 @@ int main(int argc, char* argv[])
 			false
 		);
 
-		matrix* Predictions;
+		matrix* Predictions = NULL;
 		NeuralNetForward(
 			NeuralNet,
 			Inputs,
@@ -1842,11 +1842,11 @@ int main(int argc, char* argv[])
 		uint32_t MiniBatchSize = 32;
 		uint32_t TrainingSamples = 2048;
 		uint32_t TestSamples = 100;
-		uint32_t Epochs = 50;
+		uint32_t Epochs = 100;
 		float TrainingAccuracyThreshold = 0.99f;
 		float LossThreshold = -0.00001f;
 		float LearningRate = 0.1f;
-		bool PrintTraining = false;
+		bool PrintTraining = true;
 
 		snprintf(
 			FilePathBuffer,
@@ -1951,7 +1951,7 @@ int main(int argc, char* argv[])
 					);
 				}
 
-				float Loss;
+				float Loss = -1.0f;
 				NeuralNetForward(
 					FullBatchNnViewer,
 					Data,
@@ -2025,9 +2025,9 @@ int main(int argc, char* argv[])
 			snprintf(
 				FilePathBuffer,
 				sizeof(FilePathBuffer),
-				"%s/%s",
+				"%s/models/mnist_%dsamples.model",
 				TestDataDirectory,
-				"models/mnist.model"
+				TrainingSamples
 			);
 			SaveNeuralNet(NeuralNet, FilePathBuffer);
 

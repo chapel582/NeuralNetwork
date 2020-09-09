@@ -1,17 +1,11 @@
-/*
-TODO: This is not a final platform layer
-	- Fullscreen support
-	- Non-job threading
-	- sleep
-	- control cursor visibility
-	- Hardware acceleration
-	- Blit speed improvements
-	- Raw input and support for multiple keyboards
-*/
+#if DEMO_DEBUG
+#define _CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
+#endif
 
-// NOTE: Apocalypse stuff
-#include "apocalypse.cpp"
-#include "apocalypse_platform.h"
+#include "neural_net_cpu.cpp"
+#include "vector.h"
 
 // NOTE: C stuff
 #include <stdio.h>
@@ -22,11 +16,7 @@ TODO: This is not a final platform layer
 #include <windows.h>
 #include <Winuser.h>
 
-// NOTE: Win32 Apocalypse stuff
-#include "win32_apocalypse.h"
-
 bool GlobalRunning = false;
-win32_offscreen_buffer GlobalBackBuffer = {};
 
 struct win32_offscreen_buffer
 {
@@ -37,6 +27,7 @@ struct win32_offscreen_buffer
 	void* Memory;
 	BITMAPINFO Info;
 };
+win32_offscreen_buffer GlobalBackBuffer = {};
 
 #define WINDOW_STYLE (WS_OVERLAPPEDWINDOW | WS_VISIBLE)
 
@@ -78,6 +69,38 @@ void Win32BufferToWindow(win32_offscreen_buffer* BackBuffer, HDC DeviceContext)
 		DIB_RGB_COLORS,
 		SRCCOPY
 	);
+}
+
+struct win32_window_dimension
+{
+	uint32_t Width;
+	uint32_t Height;
+};
+
+win32_window_dimension Win32GetWindowDimension(HWND Window)
+{
+	RECT ClientRect = {};
+	GetClientRect(Window, &ClientRect);
+	win32_window_dimension Result = {};
+	Result.Width = ClientRect.right - ClientRect.left;
+	Result.Height = ClientRect.bottom - ClientRect.top;
+	return Result;
+}
+
+win32_window_dimension Win32CalculateWindowDimensions()
+{
+	RECT ClientRect = {};
+	ClientRect.right = GlobalBackBuffer.Width;
+	ClientRect.bottom = GlobalBackBuffer.Height;
+	AdjustWindowRect(
+		&ClientRect,
+		WINDOW_STYLE,
+		false
+	);
+	win32_window_dimension Result;
+	Result.Width = ClientRect.right - ClientRect.left;
+	Result.Height = ClientRect.bottom - ClientRect.top;
+	return Result;
 }
 
 LRESULT CALLBACK MainWindowCallback(
@@ -135,12 +158,6 @@ LRESULT CALLBACK MainWindowCallback(
 		}
 		case(WM_GETMINMAXINFO):
 		{
-			win32_window_dimension Dim = Win32CalculateWindowDimensions();
-			MINMAXINFO* Mmi = (MINMAXINFO*) LParam;
-			Mmi->ptMinTrackSize.x = Dim.Width;
-			Mmi->ptMinTrackSize.y = Dim.Height;
-			Mmi->ptMaxTrackSize.x = Dim.Width;
-			Mmi->ptMaxTrackSize.y = Dim.Height;
 			break;
 		}
 		default:
@@ -162,6 +179,18 @@ int CALLBACK WinMain(
 	int ShowCode
 )
 {
+#if DEMO_DEBUG
+	_CrtSetDbgFlag ( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF );
+#endif
+
+	bool ConsoleWorking = AllocConsole();
+	if(!ConsoleWorking)
+	{
+		goto end;
+	}
+	FILE* Stream;
+	freopen_s(&Stream, "CONOUT$", "w", stdout);
+
 	LARGE_INTEGER PerformanceFrequency;
 	QueryPerformanceFrequency(&PerformanceFrequency);
 	GlobalPerformanceFrequency = PerformanceFrequency.QuadPart;
@@ -175,10 +204,12 @@ int CALLBACK WinMain(
 
 	GlobalBackBuffer = {};
 	GlobalBackBuffer.BytesPerPixel = 4;
+	uint32_t ImageScaleUp = 16;
+	uint32_t BrushWidth = 4 * ImageScaleUp;
 	// NOTE: get memory for backbuffer
 	{
-		GlobalBackBuffer.Width = MNIST_DIM;
-		GlobalBackBuffer.Height = MNIST_DIM;
+		GlobalBackBuffer.Width = ImageScaleUp * MNIST_DIM;
+		GlobalBackBuffer.Height = ImageScaleUp * MNIST_DIM;
 		GlobalBackBuffer.Pitch = (
 			GlobalBackBuffer.Width * GlobalBackBuffer.BytesPerPixel
 		);
@@ -229,10 +260,8 @@ int CALLBACK WinMain(
 			0
 		);
 
-		bool MouseDown = false;
 		if(WindowHandle)
 		{
-			// TODO: query this on Windows
 			int MonitorRefreshHz = 60;
 			{
 				HDC RefreshDC = GetDC(WindowHandle);
@@ -243,16 +272,64 @@ int CALLBACK WinMain(
 					MonitorRefreshHz = Win32RefreshRate;
 				}
 			}
-			int GameUpdateHz = MonitorRefreshHz / 2;
-			float TargetSecondsPerFrame = 1.0f / (float) GameUpdateHz;
+			int UpdateHz = MonitorRefreshHz / 2;
+			float TargetSecondsPerFrame = 1.0f / (float) UpdateHz;
 
-			matrix* DigitMatrix;
-			AllocMatrix(&DigitMatrix, 1, MNIST_DIM * MNIST_DIM);
-			MatrixClear(DigitMatrix);
+			matrix* PredictMatrix;
+			AllocMatrix(&PredictMatrix, 1, MNIST_DIM * MNIST_DIM);
+			MatrixClear(PredictMatrix);
 
 			// NOTE: Since we specified CS_OWNDC, we can just grab this 
 			// CONT: once and use it forever. No sharing
 			HDC DeviceContext = GetDC(WindowHandle);
+
+			
+			char NeuralNetModelPath[260];
+			if(CommandLine[0] == 0)
+			{
+				strcpy_s(
+					NeuralNetModelPath,					
+					sizeof(NeuralNetModelPath),
+					"../test_data/models/mnist_16384samples.model"		
+				);
+			}
+			else
+			{
+				strcpy_s(
+					NeuralNetModelPath,
+					sizeof(NeuralNetModelPath),
+					CommandLine
+				);
+			}
+			printf("Testing %s\n", NeuralNetModelPath);
+
+			uint32_t MiniBatchSize = 32;
+			matrix* TrainMatrix;
+			AllocMatrix(&TrainMatrix, MiniBatchSize, MNIST_DIM * MNIST_DIM);
+			MatrixClear(TrainMatrix);
+			matrix* TrainLabels;
+			AllocMatrix(&TrainLabels, MiniBatchSize, 10);
+			MatrixClear(TrainLabels);
+
+			uint32_t TrainDataIndex = 0;
+			neural_net* TrainingNn = NULL;
+			LoadNeuralNet(
+				&TrainingNn, NeuralNetModelPath, MiniBatchSize, 4
+			);
+			neural_net* PredictionNn;
+			ResizedNeuralNet(&PredictionNn, TrainingNn, 1);
+
+			neural_net_trainer* Trainer;
+			AllocNeuralNetTrainer(
+				&Trainer,
+				TrainingNn,
+				0.1f,
+				LayerType_Count
+			);
+
+			bool MouseDown = false;
+			uint16_t LastY = 0;
+			uint16_t LastX = 0;
 
 			int64_t FlipWallClock = Win32GetWallClock();
 			GlobalRunning = true;
@@ -273,9 +350,13 @@ int CALLBACK WinMain(
 					{
 						case(WM_LBUTTONDOWN):
 						{
-							uint16_t XPos = LParam & 0xFFFF;
-							uint16_t YPos = ScreenHeight - ((LParam & 0xFFFF0000) >> 16);
-							MouseDown = true;
+							uint16_t XPos = Message.lParam & 0xFFFF;
+							uint16_t YPos = (uint16_t) (
+								GlobalBackBuffer.Height - 
+								((Message.lParam & 0xFFFF0000) >> 16)
+							);
+							LastY = YPos;
+							LastX = XPos;
 							break;
 						}
 						case(WM_LBUTTONUP):
@@ -284,6 +365,75 @@ int CALLBACK WinMain(
 						}
 						case(WM_MOUSEMOVE):
 						{
+							if(((Message.wParam & MK_LBUTTON) > 0))
+							{
+								uint16_t XPos = Message.lParam & 0xFFFF;
+								uint16_t YPos = (uint16_t)(
+									GlobalBackBuffer.Height - 
+									((Message.lParam & 0xFFFF0000) >> 16)
+								);
+
+								uint32_t* Pixel = (uint32_t*) (
+									GlobalBackBuffer.Memory
+								);
+								Pixel += YPos * GlobalBackBuffer.Width + XPos;
+								*Pixel = 0xFFFFFFFF;
+
+								vector2 NewPos = Vector2(XPos, YPos);
+								vector2 LastPos = Vector2(LastX, LastY);
+								vector2 Diff = NewPos - LastPos;
+								vector2 NormalDiff = Normalize(Diff);
+								vector2 CurrentPixel = LastPos;
+								while(Magnitude(CurrentPixel - NewPos) > 1)
+								{
+									uint32_t IntPixelX = (uint32_t) (
+										CurrentPixel.X
+									);
+									uint32_t IntPixelY = (uint32_t) (
+										CurrentPixel.Y
+									);
+
+									// NOTE: here we make our brush bigger
+									uint32_t Left = (
+										IntPixelX - (BrushWidth / 2)
+									);
+									uint32_t Top = (
+										IntPixelY - (BrushWidth / 2)
+									);
+									for(
+										uint32_t RectY = Top;
+										RectY < (Top + BrushWidth);
+										RectY++
+									)
+									{
+										for(
+											uint32_t RectX = Left;
+											RectX < (Left + BrushWidth);
+											RectX++
+										)
+										{
+											if(
+												RectX >= 0 &&
+												RectX < GlobalBackBuffer.Width &&
+												RectY >= 0 &&
+												RectY < GlobalBackBuffer.Height
+											)
+											{
+												uint32_t* WriteTo = (
+													((uint32_t*) GlobalBackBuffer.Memory) +
+													GlobalBackBuffer.Width * RectY + 
+													RectX
+												);
+												*WriteTo = 0xFFFFFFFF;
+											}
+										}
+									}
+
+									CurrentPixel += NormalDiff;
+								}
+								LastY = YPos;
+								LastX = XPos;
+							}
 							break;
 						}
 						case(WM_SYSKEYDOWN):
@@ -298,20 +448,89 @@ int CALLBACK WinMain(
 							bool IsDown = (
 								(Message.lParam & (1 << 31)) == 0
 							);
-							switch(KeyboardEvent->Code)
+							switch((uint8_t) Message.wParam)
 							{
-								case(0x0D): // NOTE: Return/Enter V-code
+								case(0x20):
+								{
+									// NOTE: save model
+									if(!WasDown && IsDown)
+									{
+										char FilePathBuffer[260];
+										snprintf(
+											FilePathBuffer,
+											sizeof(FilePathBuffer),
+											"%strain",
+											NeuralNetModelPath
+										);
+										printf(
+											"Saving model to %s\n", FilePathBuffer
+										);
+										SaveNeuralNet(TrainingNn, FilePathBuffer);
+										break;
+									}									
+								}
+								case(0x30):
+								case(0x31):
+								case(0x32):
+								case(0x33):
+								case(0x34):
+								case(0x35):
+								case(0x36):
+								case(0x37):
+								case(0x38):
+								case(0x39):								
 								{
 									if(!WasDown && IsDown)
 									{
-										uint32_t* Pixel = GlobalBackBuffer.Memory;
-										for(int X = 0; X < GlobalBackBuffer.Width; X++)
+										// NOTE: num keys
+										uint32_t* Pixel = (uint32_t*) (
+											GlobalBackBuffer.Memory
+										);
+										for(
+											uint32_t Y = 0;
+											Y < GlobalBackBuffer.Height;
+											Y++
+										)
 										{
-											for(int Y = 0; Y < GlobalBackBuffer.Height; Y++)
+											for(
+												uint32_t X = 0;
+												X < GlobalBackBuffer.Width;
+												X++
+											)
 											{
 												if(*Pixel != 0)
 												{
-													SetMatrix();
+													uint32_t FlippedY = (
+														GlobalBackBuffer.Height - 
+														Y
+													);
+
+													uint32_t DownSampleX = (
+														X / ImageScaleUp
+													);
+													uint32_t DownSampleY = (
+														FlippedY / ImageScaleUp
+													);
+
+													uint32_t MatrixIndex = (
+														(MNIST_DIM * DownSampleY)
+														+ 
+														DownSampleX
+													);
+
+													float LastValue = (
+														GetMatrixElement(
+															TrainMatrix,
+															TrainDataIndex,
+															MatrixIndex
+														)
+													);
+													SetMatrixElement(
+														TrainMatrix,
+														TrainDataIndex,
+														MatrixIndex,
+														LastValue + 1.0f
+													);
 												}
 
 												*Pixel = 0;
@@ -319,15 +538,144 @@ int CALLBACK WinMain(
 											}
 										}
 
-										uint32_t* Pixel = GlobalBackBuffer.Memory;
-										for(int X = 0; X < GlobalBackBuffer.Width; X++)
+										uint8_t Label = (
+											(uint8_t) Message.wParam - 0x30
+										);
+										SetMatrixElement(
+											TrainLabels,
+											TrainDataIndex,
+											Label,
+											1.0f
+										);
+
+										if(
+											TrainDataIndex == (MiniBatchSize - 1)
+										)
 										{
-											for(int Y = 0; Y < GlobalBackBuffer.Height; Y++)
+											printf(
+												"Full minibatch. Training!\n"
+											);
+											MatrixScalarMultCore(
+												(
+													1.0f / 
+													(
+														(float) ImageScaleUp * 
+														(float) ImageScaleUp
+													)
+												),
+												TrainMatrix,
+												TrainMatrix,
+												0,
+												1
+											);
+											TrainNeuralNet(
+												Trainer,
+												TrainingNn,
+												TrainMatrix,
+												TrainLabels,
+												1,
+												false,
+												false
+											);
+											TrainDataIndex = 0;
+
+											MatrixClear(TrainMatrix);
+											MatrixClear(TrainLabels);
+											printf("Training complete\n");
+										}
+										else
+										{
+											printf(
+												"Sample %d. Saving data as %d...\n",
+												TrainDataIndex,
+												Label
+											);
+											TrainDataIndex++;
+										}
+									}
+									break;
+								}
+								case(0x0D): // NOTE: Return/Enter V-code
+								{
+									if(!WasDown && IsDown)
+									{
+										MatrixClear(PredictMatrix);
+
+										uint32_t* Pixel = (uint32_t*) (
+											GlobalBackBuffer.Memory
+										);
+										for(
+											uint32_t Y = 0;
+											Y < GlobalBackBuffer.Height;
+											Y++
+										)
+										{
+											for(
+												uint32_t X = 0;
+												X < GlobalBackBuffer.Width;
+												X++
+											)
 											{
+												if(*Pixel != 0)
+												{
+													uint32_t FlippedY = (
+														GlobalBackBuffer.Height - 
+														Y
+													);
+
+													uint32_t DownSampleX = (
+														X / ImageScaleUp
+													);
+													uint32_t DownSampleY = (
+														FlippedY / ImageScaleUp
+													);
+
+													uint32_t MatrixIndex = (
+														(MNIST_DIM * DownSampleY)
+														+ 
+														DownSampleX
+													);
+
+													float LastValue = (
+														GetMatrixElement(
+															PredictMatrix,
+															0,
+															MatrixIndex
+														)
+													);
+													SetMatrixElement(
+														PredictMatrix,
+														0,
+														MatrixIndex,
+														LastValue + 1.0f
+													);
+												}
+
 												*Pixel = 0;
 												Pixel++;
 											}
 										}
+
+										MatrixScalarMultCore(
+											(
+												1.0f / 
+												(
+													(float) ImageScaleUp * 
+													(float) ImageScaleUp
+												)
+											),
+											PredictMatrix,
+											PredictMatrix,
+											0,
+											1
+										);
+
+										int Prediction = Predict(
+											PredictionNn, PredictMatrix, 0
+										);
+										printf(
+											"Predicted digit: %d\n", Prediction
+										);
 									}
 									break;
 								}
@@ -377,6 +725,7 @@ int CALLBACK WinMain(
 
 				Win32BufferToWindow(&GlobalBackBuffer, DeviceContext);
 				FlipWallClock = Win32GetWallClock();				
+			}
 		}
 		else
 		{

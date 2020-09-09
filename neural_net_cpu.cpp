@@ -26,7 +26,7 @@ struct matrix
 {
 	uint32_t NumRows;
 	uint32_t NumColumns;
-	float* Data;	
+	float* Data;
 };
 
 inline size_t GetMatrixDataSize(matrix* Matrix)
@@ -45,9 +45,13 @@ bool MatricesAreEquivalent(matrix* M1, matrix* M2)
 
 void InitMatrix(matrix* Matrix, uint32_t NumRows, uint32_t NumColumns)
 {
+	*Matrix = {};
 	Matrix->NumRows = NumRows;
 	Matrix->NumColumns = NumColumns;
 	Matrix->Data = (float*) malloc(GetMatrixDataSize(Matrix));
+	memset(
+		Matrix->Data, 0, Matrix->NumRows * Matrix->NumColumns * sizeof(float)
+	);
 }
 
 void AllocMatrix(matrix** Result, uint32_t NumRows, uint32_t NumColumns)
@@ -322,11 +326,14 @@ struct matrix_op_jobs
 void AllocMatrixOpJobs(matrix_op_jobs** Result, uint32_t NumThreads)
 {
 	matrix_op_jobs* Jobs = (matrix_op_jobs*) malloc(sizeof(matrix_op_jobs));
+	*Jobs = {};
 	Jobs->NumThreads = NumThreads;
 	Jobs->Args = (matrix_op_args*) malloc(
 		Jobs->NumThreads * sizeof(matrix_op_args)
 	);
+	memset(Jobs->Args, 0, Jobs->NumThreads * sizeof(matrix_op_args));
 	Jobs->Handles = (HANDLE*) malloc(Jobs->NumThreads * sizeof(HANDLE));
+	memset(Jobs->Handles, 0, Jobs->NumThreads * sizeof(HANDLE)); 
 	*Result = Jobs;
 }
 
@@ -350,7 +357,7 @@ void MatrixOpThreadSetupAndRun(
 		Args->Result = Result;
 		Args->Start = ThreadIndex;
 		Args->Stride = MatrixOpJobs->NumThreads;
-		DWORD ThreadId;
+		DWORD ThreadId = 0;
 		MatrixOpJobs->Handles[ThreadIndex] = CreateThread(
 			NULL, 0, ThreadFunction, Args, 0, &ThreadId 
 		);
@@ -358,6 +365,14 @@ void MatrixOpThreadSetupAndRun(
 	WaitForMultipleObjects(
 		MatrixOpJobs->NumThreads, MatrixOpJobs->Handles, TRUE, INFINITE
 	);
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < MatrixOpJobs->NumThreads;
+		ThreadIndex++
+	)
+	{		
+		CloseHandle(MatrixOpJobs->Handles[ThreadIndex]);
+	}
 }
 
 DWORD WINAPI CopyMatrixThread(void* VoidArgs)
@@ -412,7 +427,6 @@ void MatrixScalarMultCore(
 	float Scalar, matrix* M1, matrix* Result, int Start, int Stride
 )
 {
-	// NOTE: the number of columns in M1 should equal the number of rows in M2
 	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
 	{
 		for(uint32_t Column = 0; Column < M1->NumColumns; Column++)
@@ -456,6 +470,15 @@ void MatrixScalarMult(
 	WaitForMultipleObjects(
 		MatrixOpJobs->NumThreads, MatrixOpJobs->Handles, TRUE, INFINITE
 	);
+
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < MatrixOpJobs->NumThreads;
+		ThreadIndex++
+	)
+	{
+		CloseHandle(MatrixOpJobs->Handles[ThreadIndex]);
+	}
 }
 
 void MatrixMultCore(
@@ -794,6 +817,14 @@ void MatrixMean(
 	WaitForMultipleObjects(
 		MatrixOpJobs->NumThreads, MatrixOpJobs->Handles, TRUE, INFINITE
 	);
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < MatrixOpJobs->NumThreads;
+		ThreadIndex++
+	)
+	{
+		CloseHandle(MatrixOpJobs->Handles[ThreadIndex]);
+	}
 }
 
 struct dense_layer
@@ -815,6 +846,7 @@ void AllocDenseLayer(
 )
 {
 	dense_layer* DenseLayer = (dense_layer*) malloc(sizeof(dense_layer));
+	*DenseLayer = {};
 	InitMatrix(&DenseLayer->Weights, InputDim, OutputDim);
 	InitMatrix(&DenseLayer->Bias, 1, OutputDim);
 	*Result = DenseLayer;
@@ -845,6 +877,7 @@ void AllocDenseLayerTrain(
 	dense_layer_train_data* TrainData = (dense_layer_train_data*) malloc(
 		sizeof(dense_layer_train_data)
 	);
+	*TrainData = {};
 	TrainData->LearningRate = LearningRate; 
 	InitMatrix(
 		&TrainData->WeightsDelta,
@@ -939,6 +972,7 @@ void AllocReluTrain(
 	relu_train_data* TrainData = (relu_train_data*) malloc(
 		sizeof(relu_train_data)
 	);
+	*TrainData = {};
 	InitMatrix(&TrainData->LayerGradient, BatchSize, InputDim);
 	*Result = TrainData;
 }
@@ -1180,6 +1214,14 @@ float CrossEntropyForward(
 	WaitForMultipleObjects(
 		MatrixOpJobs->NumThreads, MatrixOpJobs->Handles, TRUE, INFINITE
 	);
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < MatrixOpJobs->NumThreads;
+		ThreadIndex++
+	)
+	{
+		CloseHandle(MatrixOpJobs->Handles[ThreadIndex]);
+	}
 	float Sum = 0;
 	for(
 		uint32_t ThreadIndex = 0;
@@ -1283,6 +1325,14 @@ float MeanSquaredForward(
 	WaitForMultipleObjects(
 		MatrixOpJobs->NumThreads, MatrixOpJobs->Handles, TRUE, INFINITE
 	);
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < MatrixOpJobs->NumThreads;
+		ThreadIndex++
+	)
+	{
+		CloseHandle(MatrixOpJobs->Handles[ThreadIndex]);
+	}
 	float Sum = 0;
 	for(
 		uint32_t ThreadIndex = 0;
@@ -1311,6 +1361,7 @@ void AllocMseTrainData(
 	mse_train_data* TrainData = (mse_train_data*) malloc(
 		sizeof(mse_train_data)
 	);
+	*TrainData = {};
 	InitMatrix(&TrainData->LayerGradient, BatchSize, PredictionDim);
 	*Result = TrainData;
 }
@@ -1707,6 +1758,22 @@ void NeuralNetForward(
 	}
 }
 
+int Predict(neural_net* NeuralNet, matrix* Inputs, uint32_t BatchIndex)
+{
+	// NOTE: utility function for predicting
+	matrix* Predictions = NULL;
+	NeuralNetForward(
+		NeuralNet,
+		Inputs,
+		NULL,
+		&Predictions,
+		NULL
+	);
+	return ArgMax(
+		GetMatrixRow(Predictions, BatchIndex), Predictions->NumColumns
+	);
+}
+
 struct neural_net_trainer
 {
 	neural_net* NeuralNet;
@@ -1741,10 +1808,12 @@ void AllocNeuralNetTrainer(
 	neural_net_trainer* Trainer = (neural_net_trainer*) (
 		malloc(sizeof(neural_net_trainer))
 	);
+	*Trainer = {};
 	Trainer->NeuralNet = NeuralNet;
 	void** TrainDataArray = (void**) (
 		malloc(NeuralNet->NumLayers * sizeof(void*))
 	);
+	memset(TrainDataArray, 0, NeuralNet->NumLayers * sizeof(void*));
 	Trainer->TrainDataArray = TrainDataArray;
 
 	layer_link* LayerLink = NeuralNet->FirstLink;
@@ -1928,10 +1997,10 @@ void TrainNeuralNet(
 
 	matrix_op_jobs* MatrixOpJobs = NeuralNet->MatrixOpJobs;
 	layer_link* LayerLink;
-	float Loss;
+	float Loss = -1.0f;
 	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
 	{
-		matrix* Predictions;
+		matrix* Predictions = NULL;
 		NeuralNetForward(
 			NeuralNet,
 			Inputs,
@@ -2036,7 +2105,7 @@ void TrainNeuralNet(
 
 float TopOneAccuracy(neural_net* NeuralNet, matrix* Inputs, matrix* Labels)
 {
-	matrix* Predictions;
+	matrix* Predictions = NULL;
 	NeuralNetForward(
 		NeuralNet,
 		Inputs,
