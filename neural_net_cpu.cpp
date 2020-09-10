@@ -3,6 +3,11 @@
 #include <stdio.h>
 #include <math.h>
 
+#ifndef NN_CPU_DEBUG
+#define NDEBUG 
+#endif
+#include <assert.h>
+
 // TODO: Need to have a platform independent way of handling threads
 #include <windows.h>
 
@@ -49,9 +54,7 @@ void InitMatrix(matrix* Matrix, uint32_t NumRows, uint32_t NumColumns)
 	Matrix->NumRows = NumRows;
 	Matrix->NumColumns = NumColumns;
 	Matrix->Data = (float*) malloc(GetMatrixDataSize(Matrix));
-	memset(
-		Matrix->Data, 0, Matrix->NumRows * Matrix->NumColumns * sizeof(float)
-	);
+	memset(Matrix->Data, 0, GetMatrixDataSize(Matrix));
 }
 
 void AllocMatrix(matrix** Result, uint32_t NumRows, uint32_t NumColumns)
@@ -114,12 +117,15 @@ inline void MatrixClear(matrix* Matrix)
 
 inline float* GetMatrixRow(matrix* Matrix, uint32_t Row)
 {
+	assert(Row < Matrix->NumRows);
 	float* Element = Matrix->Data + Row * Matrix->NumColumns;
 	return Element;
 }
 
 inline float GetMatrixElement(matrix* Matrix, uint32_t Row, uint32_t Column)
 {
+	assert(Row < Matrix->NumRows);
+	assert(Column < Matrix->NumColumns);
 	float* Element = Matrix->Data + Row * Matrix->NumColumns + Column;
 	return *Element;
 }
@@ -128,6 +134,8 @@ inline void SetMatrixElement(
 	matrix* Matrix, uint32_t Row, uint32_t Column, float Value
 )
 {
+	assert(Row < Matrix->NumRows);
+	assert(Column < Matrix->NumColumns);
 	float* Element = Matrix->Data + Row * Matrix->NumColumns + Column;
 	*Element = Value;
 }
