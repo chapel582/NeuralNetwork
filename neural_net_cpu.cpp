@@ -1,12 +1,10 @@
+#include "matrix.h"
+#include "matrix.cpp"
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-
-#ifndef NN_CPU_DEBUG
-#define NDEBUG 
-#endif
-#include <assert.h>
 
 // TODO: Need to have a platform independent way of handling threads
 #include <windows.h>
@@ -25,27 +23,6 @@ int ArgMax(float* Array, uint64_t ArrayLength)
 		}
 	}
 	return Result;
-}
-
-struct matrix
-{
-	uint32_t NumRows;
-	uint32_t NumColumns;
-	float* Data;
-};
-
-inline size_t GetMatrixDataSize(matrix* Matrix)
-{
-	return Matrix->NumRows * Matrix->NumColumns * sizeof(float);
-}
-
-bool MatricesAreEquivalent(matrix* M1, matrix* M2)
-{
-	if(!(M1->NumRows == M2->NumRows && M1->NumColumns == M2->NumColumns))
-	{
-		return false;
-	}
-	return memcmp(M1->Data, M2->Data, GetMatrixDataSize(M1)) == 0;
 }
 
 void InitMatrix(matrix* Matrix, uint32_t NumRows, uint32_t NumColumns)
@@ -106,38 +83,6 @@ void AllocM1M2TransposeMultResultMatrix(matrix** Result, matrix* M1, matrix* M2)
 void AllocMatrixMeanResult(matrix** Result, matrix* M1)
 {
 	AllocMatrix(Result, 1, M1->NumColumns);
-}
-
-inline void MatrixClear(matrix* Matrix)
-{
-	memset(
-		Matrix->Data, 0, Matrix->NumRows * Matrix->NumColumns * sizeof(float)
-	);
-}
-
-inline float* GetMatrixRow(matrix* Matrix, uint32_t Row)
-{
-	assert(Row < Matrix->NumRows);
-	float* Element = Matrix->Data + Row * Matrix->NumColumns;
-	return Element;
-}
-
-inline float GetMatrixElement(matrix* Matrix, uint32_t Row, uint32_t Column)
-{
-	assert(Row < Matrix->NumRows);
-	assert(Column < Matrix->NumColumns);
-	float* Element = Matrix->Data + Row * Matrix->NumColumns + Column;
-	return *Element;
-}
-
-inline void SetMatrixElement(
-	matrix* Matrix, uint32_t Row, uint32_t Column, float Value
-)
-{
-	assert(Row < Matrix->NumRows);
-	assert(Column < Matrix->NumColumns);
-	float* Element = Matrix->Data + Row * Matrix->NumColumns + Column;
-	*Element = Value;
 }
 
 void FillIdentityMatrix(matrix* Matrix)
@@ -265,53 +210,6 @@ void ShuffleInts(int_shuffler* IntShuffler)
 		List->Length--;
 		IntShuffler->Result[ArrayIndex++] = Current->Value;
 	}
-}
-
-void WriteMatrix(matrix* Matrix, FILE* File)
-{
-	fwrite(Matrix->Data, 1, GetMatrixDataSize(Matrix), File);
-}
-
-void SaveMatrix(matrix* Matrix, char* FilePath)
-{
-	// NOTE: a way to save matrix data to a file for use in unit tests
-	FILE* File;
-	fopen_s(&File, FilePath, "wb");
-	WriteMatrix(Matrix, File);
-	fclose(File);
-}
-
-bool LoadMatrix(matrix* Matrix, char* FilePath)
-{
-	// NOTE: a way to load a matrix from a file for comparison to unit test 
-	// CONT: results
-	FILE* File;
-	fopen_s(&File, FilePath, "rb");
-	size_t BytesRead = fread(Matrix->Data, 1, GetMatrixDataSize(Matrix), File);
-	fclose(File);
-	return BytesRead == GetMatrixDataSize(Matrix);
-}
-
-bool IsBigEndian(void)
-{
-	uint32_t Value = 0xAABBCCDD;
-	uint8_t* ValuePtr = (uint8_t*) &Value;
-	return *ValuePtr == 0xAA;
-}
-
-void PrintMatrix(matrix* Matrix)
-{
-	printf("[\n");
-	for(uint32_t Row = 0; Row < Matrix->NumRows; Row++)
-	{
-		printf("[");
-		for(uint32_t Column = 0; Column < (Matrix->NumColumns - 1); Column++)
-		{
-			printf("%f, ", GetMatrixElement(Matrix, Row, Column));
-		}
-		printf("%f]\n", GetMatrixElement(Matrix, Row, Matrix->NumColumns - 1));
-	}
-	printf("]\n");
 }
 
 struct matrix_op_args
@@ -522,6 +420,7 @@ void MatrixMult(
 	matrix_op_jobs* MatrixOpJobs, matrix* M1, matrix* M2, matrix* Result
 )
 {
+	assert(M1->NumRows == M2->NumColumns);
 	MatrixOpThreadSetupAndRun(MatrixOpJobs, M1, M2, Result, MatrixMultThread);
 }
 
@@ -562,6 +461,7 @@ void MatrixMultM1Transpose(
 	matrix_op_jobs* MatrixOpJobs, matrix* M1, matrix* M2, matrix* Result
 )
 {
+	assert(M1->NumRows == M2->NumRows);
 	MatrixOpThreadSetupAndRun(
 		MatrixOpJobs, M1, M2, Result, MatrixMultM1TransposeThread
 	);
@@ -678,6 +578,8 @@ void MatrixAdd(
 	matrix_op_jobs* MatrixOpJobs, matrix* M1, matrix* M2, matrix* Result
 )
 {
+	assert(M1->NumRows == M2->NumRows);
+	assert(M1->NumColumns == M2->NumColumns);
 	MatrixOpThreadSetupAndRun(
 		MatrixOpJobs, M1, M2, Result, MatrixAddThread
 	);
@@ -687,6 +589,9 @@ void MatrixSubtractCore(
 	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
 )
 {
+	assert(M1->NumRows == M2->NumRows);
+	assert(M1->NumColumns == M2->NumColumns);
+
 	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
 	{
 		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
@@ -714,6 +619,9 @@ void MatrixSubtract(
 	matrix_op_jobs* MatrixOpJobs, matrix* M1, matrix* M2, matrix* Result
 )
 {
+	assert(M1->NumRows == M2->NumRows);
+	assert(M1->NumColumns == M2->NumColumns);
+
 	MatrixOpThreadSetupAndRun(
 		MatrixOpJobs, M1, M2, Result, MatrixSubtractThread
 	);
@@ -740,7 +648,7 @@ void AddVectorToRowsCore(
 				Col,
 				(
 					GetMatrixElement(M1, Row, Col) + 
-					GetMatrixElement(Vector, 0, Col)
+					GetMatrixElement(Vector, Col)
 				)
 			);
 		}
@@ -764,6 +672,10 @@ void AddVectorToRows(
 	// CONT: where M2 has the same values in each row (Vector) 
 	// NOTE: there's no reason to allocate a huge matrix just for this, so this 
 	// CONT: method is used instead
+	assert(
+		(M1->NumColumns == Vector->NumColumns) || 
+		(M1->NumColumns == Vector->NumRows)
+	);
 	MatrixOpThreadSetupAndRun(
 		MatrixOpJobs, M1, Vector, Result, AddVectorToRowsThread
 	);
