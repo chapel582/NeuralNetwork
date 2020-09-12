@@ -1,3 +1,5 @@
+#include "neural_net.h"
+
 #include "matrix.h"
 #include "matrix.cpp"
 
@@ -83,26 +85,6 @@ void AllocM1M2TransposeMultResultMatrix(matrix** Result, matrix* M1, matrix* M2)
 void AllocMatrixMeanResult(matrix** Result, matrix* M1)
 {
 	AllocMatrix(Result, 1, M1->NumColumns);
-}
-
-void FillIdentityMatrix(matrix* Matrix)
-{
-	for(uint32_t Row = 0; Row < Matrix->NumRows; Row++)
-	{
-		for(uint32_t Col = 0; Col < Matrix->NumColumns; Col++)
-		{
-			float Value;
-			if(Row == Col)
-			{
-				Value = 1.0f;
-			}
-			else
-			{
-				Value = 0.0f;
-			}
-			SetMatrixElement(Matrix, Row, Col, Value);
-		}
-	}
 }
 
 inline float RandUnity()
@@ -747,20 +729,6 @@ void MatrixMean(
 	}
 }
 
-struct dense_layer
-{
-	/* NOTE: 
-	Inputs matrix to this layer has dimensions K x N where K is the number of 
-	samples in the batch and N is the number of dimensions for the output of the 
-	previous layer
-	Therefore, Weights has dimensions N x M, M is the dimension of the output 
-	for this dense layer
-	Bias has dimensions 1 x M
-	*/
-	matrix Weights;
-	matrix Bias;
-};
-
 void AllocDenseLayer(
 	dense_layer** Result, uint32_t InputDim, uint32_t OutputDim
 )
@@ -778,14 +746,6 @@ void FreeDenseLayer(dense_layer* DenseLayer)
 	FreeMatrixData(DenseLayer->Bias);
 	free(DenseLayer);
 }
-
-struct dense_layer_train_data
-{
-	matrix WeightsDelta;
-	matrix BiasDelta;
-	matrix LayerGradient;
-	float LearningRate;
-};
 
 void AllocDenseLayerTrain(
 	dense_layer_train_data** Result,

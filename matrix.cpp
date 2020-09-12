@@ -42,3 +42,23 @@ bool LoadMatrix(matrix* Matrix, char* FilePath)
 	fclose(File);
 	return BytesRead == GetMatrixDataSize(Matrix);
 }
+
+void FillIdentityMatrix(matrix* Matrix)
+{
+	for(uint32_t Row = 0; Row < Matrix->NumRows; Row++)
+	{
+		for(uint32_t Col = 0; Col < Matrix->NumColumns; Col++)
+		{
+			float Value;
+			if(Row == Col)
+			{
+				Value = 1.0f;
+			}
+			else
+			{
+				Value = 0.0f;
+			}
+			SetMatrixElement(Matrix, Row, Col, Value);
+		}
+	}
+}

@@ -1,3 +1,5 @@
+#include "neural_net.h"
+
 #include "matrix.h"
 #include "matrix.cpp"
 
@@ -480,6 +482,87 @@ void CudaMatrixMean(matrix* M1, matrix* Result)
 	cudaDeviceSynchronize();
 }
 
+void CudaAllocDenseLayer(
+	dense_layer** Result, uint32_t InputDim, uint32_t OutputDim
+)
+{
+	cudaMallocManaged(Result, sizeof(dense_layer));
+	dense_layer* DenseLayer = *Result;
+	*DenseLayer = {};
+	CudaInitMatrix(&DenseLayer->Weights, InputDim, OutputDim);
+	CudaInitMatrix(&DenseLayer->Bias, 1, OutputDim);
+}
+
+void CudaDenseForward(matrix* Inputs, dense_layer* DenseLayer, matrix* Results)
+{
+	CudaMatrixMult(Inputs, &DenseLayer->Weights, Results);
+	CudaAddVectorToRows(Results, &DenseLayer->Bias, Results);	
+}
+
+void CudaAllocDenseLayerTrain(
+	dense_layer_train_data** Result,
+	dense_layer* DenseLayer,
+	float LearningRate,
+	uint32_t BatchSize
+)
+{
+	cudaMallocManaged(Result, sizeof(dense_layer_train_data));
+	dense_layer_train_data* TrainData = *Result;
+	*TrainData = {};
+	TrainData->LearningRate = LearningRate; 
+	CudaInitMatrix(
+		&TrainData->WeightsDelta,
+		DenseLayer->Weights.NumRows,
+		DenseLayer->Weights.NumColumns
+	);
+	CudaInitMatrix(
+		&TrainData->BiasDelta,
+		DenseLayer->Bias.NumRows,
+		DenseLayer->Bias.NumColumns
+	);
+	CudaInitMatrix(
+		&TrainData->LayerGradient, BatchSize, DenseLayer->Weights.NumRows
+	);
+}
+
+void CudaDenseBack(
+	matrix* Inputs,
+	matrix* NextLayerGradient,
+	dense_layer* DenseLayer,
+	dense_layer_train_data* TrainData
+)
+{
+	CudaMatrixMultM2Transpose(
+		NextLayerGradient, &DenseLayer->Weights, &TrainData->LayerGradient
+	);
+
+	CudaMatrixMultM1Transpose(
+		Inputs, NextLayerGradient, &TrainData->WeightsDelta
+	);
+	CudaMatrixScalarMult(
+		TrainData->LearningRate,
+		&TrainData->WeightsDelta,
+		&TrainData->WeightsDelta
+	);
+	CudaMatrixAdd(
+		&DenseLayer->Weights,
+		&TrainData->WeightsDelta,
+		&DenseLayer->Weights
+	);
+	
+	CudaMatrixMean(NextLayerGradient, &TrainData->BiasDelta);
+	CudaMatrixScalarMult(
+		TrainData->LearningRate,
+		&TrainData->BiasDelta,
+		&TrainData->BiasDelta
+	);
+	CudaMatrixAdd(
+		&DenseLayer->Bias,
+		&TrainData->BiasDelta,
+		&DenseLayer->Bias
+	);
+}
+
 #define SAVE_RESULTS 0
 matrix* TestMatrixResult(
 	matrix* M1,
@@ -786,5 +869,72 @@ int main(int argc, char* argv[])
 		// NOTE: if memory starts getting hefty, free memory here
 	}
 	// SECTION STOP: Matrix tests
+
+	// SECTION START: Dense layer tests
+	{
+		uint32_t BatchSize = 8;
+		uint32_t InputDim = 4;
+		uint32_t OutputDim = 3;
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
+
+		matrix* Outputs;
+		CudaAllocMatrix(&Outputs, BatchSize, OutputDim);
+		MatrixClear(Outputs);
+
+		dense_layer* DenseLayer;
+		CudaAllocDenseLayer(&DenseLayer, InputDim, OutputDim);
+		FillMatrixConsecutive(&DenseLayer->Weights);
+		FillMatrixConsecutive(&DenseLayer->Bias);
+		CudaDenseForward(Inputs, DenseLayer, Outputs);
+		strcpy_s(FileName, sizeof(FileName), "CudaForwardDense");
+		TestMatrixResult(
+			Outputs,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			FileName,
+			EndianString
+		);
+
+		matrix* NextLayerGradient;
+		CudaAllocMatrix(&NextLayerGradient, BatchSize, OutputDim);
+		FillMatrixConsecutive(NextLayerGradient);
+
+		dense_layer_train_data* TrainData;
+		CudaAllocDenseLayerTrain(&TrainData, DenseLayer, 1.0f, BatchSize);
+		CudaDenseBack(
+			Inputs, NextLayerGradient, DenseLayer, TrainData
+		);
+		strcpy_s(FileName, sizeof(FileName), "CudaDenseWeightsAfterUpdate");
+		TestMatrixResult(
+			&DenseLayer->Weights,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			FileName,
+			EndianString
+		);
+		strcpy_s(FileName, sizeof(FileName), "CudaDenseBiasAfterUpdate");
+		TestMatrixResult(
+			&DenseLayer->Bias,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			FileName,
+			EndianString
+		);
+		strcpy_s(FileName, sizeof(FileName), "CudaDenseLayerGradient");
+		TestMatrixResult(
+			&TrainData->LayerGradient,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			FileName,
+			EndianString
+		);
+	}
+	// SECTION STOP: Dense layer tests
 	return 0;
 }
