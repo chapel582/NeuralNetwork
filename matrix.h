@@ -2,9 +2,6 @@
 
 #include <string.h>
 #include <stdint.h>
-#ifndef MATRIX_DEBUG
-#define NDEBUG 
-#endif
 #include <assert.h>
 
 struct matrix

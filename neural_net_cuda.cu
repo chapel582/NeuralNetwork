@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
+#include <assert.h>
 
 __device__
 float CudaGetMatrixElement(matrix* Matrix, uint32_t Row, uint32_t Column)
@@ -141,7 +142,7 @@ void CudaMatrixMultCore(matrix* M1, matrix* M2, matrix* Result)
 
 void CudaMatrixMult(matrix* M1, matrix* M2, matrix* Result)
 {
-	assert(M1->NumRows == M2->NumColumns);
+	assert(M1->NumColumns == M2->NumRows);
 	// NOTE: not sure if this should be a variable or queried or tracked with 
 	// CONT: a data structure
 	int BlockSize = 256;
@@ -563,13 +564,110 @@ void CudaDenseBack(
 	);
 }
 
-#define SAVE_RESULTS 0
+void CudaAllocReluTrain(
+	relu_train_data** Result, uint32_t BatchSize, uint32_t InputDim
+)
+{
+	cudaMallocManaged(Result, sizeof(relu_train_data));
+	relu_train_data* TrainData = *Result;
+	*TrainData = {};
+	CudaInitMatrix(&TrainData->LayerGradient, BatchSize, InputDim);
+}
+
+// TODO: implement free
+// void FreeReluTrain(relu_train_data* TrainData)
+// {
+// 	FreeMatrixData(TrainData->LayerGradient);
+// 	free(TrainData);
+// }
+
+__global__
+void CudaReluForwardCore(matrix* M1, matrix* Result)
+{
+	// NOTE: this basically indexes by the thread index, but b/c the thread 
+	// CONT: index is reset on every block, 
+	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	// NOTE: this basically calculates the # of threads
+	int Stride = blockDim.x * gridDim.x;
+
+	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	{
+		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
+		{
+			float NewValue;
+			float OldValue = CudaGetMatrixElement(M1, Row, Col);
+			if(OldValue < 0)
+			{
+				NewValue = 0;
+			}
+			else
+			{
+				NewValue = OldValue;
+			}
+			CudaSetMatrixElement(Result, Row, Col, NewValue);
+		}
+	}
+}
+
+
+void CudaReluForward(matrix* Inputs, matrix* Outputs)
+{
+	assert(Inputs->NumRows == Outputs->NumRows);
+	assert(Inputs->NumColumns == Outputs->NumColumns);
+
+	int BlockSize = 256;
+	int NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	CudaReluForwardCore<<<NumBlocks, BlockSize>>>(Inputs, Outputs);
+	cudaDeviceSynchronize();
+}
+
+__global__
+void CudaReluBackCore(
+	matrix* Inputs, matrix* NextLayerGradient, matrix* LayerGradient
+)
+{
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
+	uint32_t Stride = gridDim.x * blockDim.x;
+	for(uint32_t Row = Start; Row < Inputs->NumRows; Row += Stride)
+	{
+		for(uint32_t Col = 0; Col < Inputs->NumColumns; Col++)
+		{
+			float LayerGradientElement;
+			float InputValue = CudaGetMatrixElement(Inputs, Row, Col);
+			if(InputValue <= 0)
+			{
+				LayerGradientElement = 0;
+			}
+			else
+			{
+				LayerGradientElement = CudaGetMatrixElement(
+					NextLayerGradient, Row, Col
+				);
+			}
+			CudaSetMatrixElement(LayerGradient, Row, Col, LayerGradientElement);
+		}
+	}
+}
+
+void CudaReluBack(
+	matrix* Inputs, matrix* NextLayerGradient, relu_train_data* TrainData
+)
+{
+	int BlockSize = 256;
+	int NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	CudaReluBackCore<<<NumBlocks, BlockSize>>>(
+		Inputs, NextLayerGradient, &TrainData->LayerGradient
+	);
+	cudaDeviceSynchronize();
+}
+
+#define SAVE_RESULTS 1
 matrix* TestMatrixResult(
 	matrix* M1,
 	char* FilePathBuffer,
 	size_t FilePathBufferSize,
 	char* TestDataDirectory,
-	char* TestName,
+	const char* TestName,
 	char* EndianString
 )
 {
@@ -638,7 +736,6 @@ int main(int argc, char* argv[])
 		strcpy_s(EndianString, sizeof(EndianString), "LittleEndian");
 	}
 	char FilePathBuffer[260];
-	char FileName[260];
 
 	// SECTION START: Matrix tests
 	{
@@ -658,13 +755,12 @@ int main(int argc, char* argv[])
 		CudaAllocMultResultMatrix(&MultResult, M1, M2);
 		CudaMatrixMult(M1, M2, MultResult);
 		// NOTE: TestMatrixResult returns a matrix pointer that can be freed
-		strcpy_s(FileName, sizeof(FileName), "CudaMultResult");
 		TestMatrixResult(
 			MultResult,
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaMultResult",
 			EndianString
 		);
 
@@ -685,26 +781,24 @@ int main(int argc, char* argv[])
 		matrix* MultResult2;
 		CudaAllocMultResultMatrix(&MultResult2, M3, M4);
 		CudaMatrixMult(M3, M4, MultResult2);
-		strcpy_s(FileName, sizeof(FileName), "CudaNonSquareMult");
 		TestMatrixResult(
 			MultResult2,
 			FilePathBuffer, 
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaNonSquareMult",
 			EndianString
 		);
 
 		matrix* AddResult;
 		CudaAllocMatrix(&AddResult, M1->NumRows, M1->NumColumns);
 		CudaMatrixAdd(M1, M2, AddResult);
-		strcpy_s(FileName, sizeof(FileName), "CudaMatrixAdd");
 		TestMatrixResult(
 			AddResult,
 			FilePathBuffer, 
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaMatrixAdd",
 			EndianString
 		);
 
@@ -714,13 +808,12 @@ int main(int argc, char* argv[])
 		CudaAllocMatrix(&Vector, 1, M1->NumColumns);
 		FillMatrixConsecutive(Vector);
 		CudaAddVectorToRows(M1, Vector, AddVectorResult);
-		strcpy_s(FileName, sizeof(FileName), "CudaAddVectorToRows");
 		TestMatrixResult(
 			AddVectorResult,
 			FilePathBuffer, 
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaAddVectorToRows",
 			EndianString
 		);
 
@@ -739,13 +832,12 @@ int main(int argc, char* argv[])
 		matrix* M5TMultResult;
 		CudaAllocM1TransposeMultResultMatrix(&M5TMultResult, M5, M6);
 		CudaMatrixMultM1Transpose(M5, M6, M5TMultResult);
-		strcpy_s(FileName, sizeof(FileName), "CudaMatrixMultM1Transpose");
 		TestMatrixResult(
 			M5TMultResult,
 			FilePathBuffer, 
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaMatrixMultM1Transpose",
 			EndianString
 		);
 
@@ -754,15 +846,12 @@ int main(int argc, char* argv[])
 		SetMatrixElement(M6, 1, 2, 13);
 		
 		CudaMatrixMultM1Transpose(M5, M6, M5TMultResult);
-		strcpy_s(
-			FileName, sizeof(FileName), "CudaNonSymmetricMatrixMultM1Transpose"
-		);
 		TestMatrixResult(
 			M5TMultResult,
 			FilePathBuffer, 
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaNonSymmetricMatrixMultM1Transpose",
 			EndianString
 		);
 
@@ -770,13 +859,12 @@ int main(int argc, char* argv[])
 		CudaAllocM2TransposeMultResultMatrix(&M6TMultResult, M5, M6);
 
 		CudaMatrixMultM2Transpose(M5, M6, M6TMultResult);
-		strcpy_s(FileName, sizeof(FileName), "CudaMatrixMultM2Transpose");
 		TestMatrixResult(
 			M6TMultResult,
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaMatrixMultM2Transpose",
 			EndianString
 		);
 
@@ -796,13 +884,12 @@ int main(int argc, char* argv[])
 		CudaAllocM1M2TransposeMultResultMatrix(&M7TM8TMultResult, M7, M8);
 		MatrixClear(M7TM8TMultResult);
 		CudaMatrixMultM1M2Transpose(M7, M8, M7TM8TMultResult);
-		strcpy_s(FileName, sizeof(FileName), "CudaMatrixMultM1M2Transpose");
 		TestMatrixResult(
 			M7TM8TMultResult,
 			FilePathBuffer, 
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaMatrixMultM1M2Transpose",
 			EndianString
 		);
 
@@ -813,13 +900,12 @@ int main(int argc, char* argv[])
 		FillMatrixConsecutive(M9);
 		
 		CudaMatrixScalarMult(0.5f, M9, M9);
-		strcpy_s(FileName, sizeof(FileName), "CudaMatrixScalarMult");
 		TestMatrixResult(
 			M9,
 			FilePathBuffer, 
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaMatrixScalarMult",
 			EndianString
 		);
 
@@ -833,13 +919,12 @@ int main(int argc, char* argv[])
 		CudaAllocMatrixMeanResult(&M10Mean, M10);
 		MatrixClear(M10Mean);
 		CudaMatrixMean(M10, M10Mean);
-		strcpy_s(FileName, sizeof(FileName), "CudaMatrixRowMean");
 		TestMatrixResult(
 			M10Mean,
 			FilePathBuffer, 
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaMatrixRowMean",
 			EndianString
 		);
 
@@ -857,13 +942,12 @@ int main(int argc, char* argv[])
 		CudaAllocMatrix(&SubResult, NumRows, NumColumns);
 		CudaMatrixSubtract(M11, M12, SubResult);
 
-		strcpy_s(FileName, sizeof(FileName), "CudaMatrixSub");
 		TestMatrixResult(
 			SubResult,
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaMatrixSub",
 			EndianString
 		);
 		// NOTE: if memory starts getting hefty, free memory here
@@ -888,13 +972,12 @@ int main(int argc, char* argv[])
 		FillMatrixConsecutive(&DenseLayer->Weights);
 		FillMatrixConsecutive(&DenseLayer->Bias);
 		CudaDenseForward(Inputs, DenseLayer, Outputs);
-		strcpy_s(FileName, sizeof(FileName), "CudaForwardDense");
 		TestMatrixResult(
 			Outputs,
 			FilePathBuffer, 
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaForwardDense",
 			EndianString
 		);
 
@@ -907,34 +990,91 @@ int main(int argc, char* argv[])
 		CudaDenseBack(
 			Inputs, NextLayerGradient, DenseLayer, TrainData
 		);
-		strcpy_s(FileName, sizeof(FileName), "CudaDenseWeightsAfterUpdate");
 		TestMatrixResult(
 			&DenseLayer->Weights,
 			FilePathBuffer, 
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaDenseWeightsAfterUpdate",
 			EndianString
 		);
-		strcpy_s(FileName, sizeof(FileName), "CudaDenseBiasAfterUpdate");
 		TestMatrixResult(
 			&DenseLayer->Bias,
 			FilePathBuffer, 
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaDenseBiasAfterUpdate",
 			EndianString
 		);
-		strcpy_s(FileName, sizeof(FileName), "CudaDenseLayerGradient");
 		TestMatrixResult(
 			&TrainData->LayerGradient,
 			FilePathBuffer, 
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			FileName,
+			"CudaDenseLayerGradient",
 			EndianString
 		);
 	}
 	// SECTION STOP: Dense layer tests
+
+	// SECTION START: RELU tests
+	{
+		uint32_t BatchSize = 8;
+		uint32_t InputDim = 4;
+
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
+
+		matrix* Outputs;
+		CudaAllocMatrix(&Outputs, BatchSize, InputDim);
+		CudaReluForward(Inputs, Outputs);
+		TestMatrixResult(
+			Outputs,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaReluForwardPositive",
+			EndianString
+		);
+
+		matrix* NextLayerGradient;
+		CudaAllocMatrix(&NextLayerGradient, BatchSize, InputDim);
+		FillMatrixConsecutive(NextLayerGradient);
+
+		relu_train_data* TrainData;
+		CudaAllocReluTrain(&TrainData, BatchSize, InputDim);
+		CudaReluBack(Inputs, NextLayerGradient, TrainData);
+		TestMatrixResult(
+			&TrainData->LayerGradient,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaReluLayerGradientPositive",
+			EndianString
+		);
+
+		CudaMatrixScalarMult(-1.0f, Inputs, Inputs);
+		CudaReluForward(Inputs, Outputs);
+		TestMatrixResult(
+			Outputs,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaReluForwardNegative",
+			EndianString
+		);
+
+		CudaReluBack(Inputs, NextLayerGradient, TrainData);
+		TestMatrixResult(
+			&TrainData->LayerGradient,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaReluLayerGradientNegative",
+			EndianString
+		);
+	}
+	// SECTION STOP: RELU Tests
 	return 0;
 }

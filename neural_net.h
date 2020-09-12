@@ -24,4 +24,9 @@ struct dense_layer_train_data
 	float LearningRate;
 };
 
+struct relu_train_data
+{
+	matrix LayerGradient;
+};
+
 #endif

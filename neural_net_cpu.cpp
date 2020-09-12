@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <assert.h>
 
 // TODO: Need to have a platform independent way of handling threads
 #include <windows.h>
@@ -402,7 +403,7 @@ void MatrixMult(
 	matrix_op_jobs* MatrixOpJobs, matrix* M1, matrix* M2, matrix* Result
 )
 {
-	assert(M1->NumRows == M2->NumColumns);
+	assert(M1->NumColumns == M2->NumRows);
 	MatrixOpThreadSetupAndRun(MatrixOpJobs, M1, M2, Result, MatrixMultThread);
 }
 
@@ -840,11 +841,6 @@ void DenseBack(
 	);
 }
 
-struct relu_train_data
-{
-	matrix LayerGradient;
-};
-
 void AllocReluTrain(
 	relu_train_data** Result, uint32_t BatchSize, uint32_t InputDim
 )
@@ -897,6 +893,9 @@ void ReluForward(
 	matrix* Outputs
 )
 {
+	assert(Inputs->NumRows == Outputs->NumRows);
+	assert(Inputs->NumColumns == Outputs->NumColumns);
+
 	MatrixOpThreadSetupAndRun(
 		MatrixOpJobs, Inputs, NULL, Outputs, ReluForwardThread
 	);
@@ -940,11 +939,15 @@ void ReluBack(
 	relu_train_data* TrainData
 )
 {
+	matrix* LayerGradient = &TrainData->LayerGradient;
+	assert(NextLayerGradient->NumRows == LayerGradient->NumRows);
+	assert(NextLayerGradient->NumColumns == LayerGradient->NumColumns);
+
 	MatrixOpThreadSetupAndRun(
 		MatrixOpJobs,
 		Inputs, 
 		NextLayerGradient, 
-		&TrainData->LayerGradient,
+		LayerGradient,
 		ReluBackThread
 	);
 }
