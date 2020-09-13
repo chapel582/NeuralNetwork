@@ -1,11 +1,13 @@
 // TODO: handle cudaMallocManaged failures
 // TODO: query max block size
+#include "arg_max.h"
+#include "int_shuffler.h"
 #include "neural_net.h"
-#include "neural_net.cpp"
-
 #include "matrix.h"
-#include "matrix.cpp"
 
+#include "neural_net.cpp"
+#include "matrix.cpp"
+#include "mnist_test.cpp"
 #include "matrix_test.cpp"
 
 #include <stdio.h>
@@ -871,6 +873,70 @@ void CudaAddMeanSquared(neural_net* NeuralNet, uint32_t MaxThreads)
 	CudaAllocMeanSquared((mse_layer**) &LayerLink->Data, MaxThreads);
 }
 
+void CudaResizedNeuralNet(
+	neural_net** Result, neural_net* Source, uint32_t NewBatchSize
+)
+{
+	// NOTE: this is needed b/c the result from each layer is preallocated
+	// CONT: so we can't use different batch sizes with the same neural net.
+	// CONT: Instead of copying all the data, I am using this function to 
+	// CONT: create the new output matrices and reusing the dense_layer structs
+	// CONT: from the Source net. This is a valuable approach for situations 
+	// CONT: where you are testing in a loop, e.g. if you check the full-batch
+	// CONT: loss after doing all the mini batches in an epoch. It's also a 
+	// CONT: slightly smaller memory profile
+
+	CudaAllocNeuralNet(Result, NewBatchSize, Source->InputDim);
+	neural_net* NeuralNet = *Result;
+
+	layer_link* LayerLink = Source->FirstLink;
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < Source->NumLayers;
+		LayerIndex++
+	)
+	{
+		switch(LayerLink->Type)
+		{
+			case(LayerType_Dense):
+			{
+				dense_layer* DenseLayer = (dense_layer*) LayerLink->Data;
+				CudaAddDense(
+					NeuralNet, DenseLayer->Weights.NumColumns, DenseLayer
+				);
+				break;
+			}
+			case(LayerType_Relu):
+			{
+				CudaAddRelu(NeuralNet);
+				break;
+			}
+			case(LayerType_Softmax):
+			{
+				// TODO: NOT IMPLEMENTED
+				assert(false);
+				break;
+			}
+			case(LayerType_CrossEntropy):
+			{
+				// TODO: NOT IMPLEMENTED
+				assert(false);
+				break;
+			}
+			case(LayerType_Mse):
+			{
+				CudaAddMeanSquared(NeuralNet, 1 << 14);
+				break;
+			}
+			default:
+			{				
+				break;
+			}
+		}
+		LayerLink = LayerLink->Next;
+	}
+}
+
 void CudaNeuralNetForward(
 	neural_net* NeuralNet,
 	matrix* Inputs,
@@ -1206,6 +1272,150 @@ void CudaTrainNeuralNet(
 				}
 			}
 			LayerLink = PreviousLayer;
+		}
+	}
+}
+
+float CudaTopOneAccuracy(neural_net* NeuralNet, matrix* Inputs, matrix* Labels)
+{
+	matrix* Predictions = NULL;
+	CudaNeuralNetForward(
+		NeuralNet,
+		Inputs,
+		Labels,
+		&Predictions,
+		NULL
+	);
+	
+	uint32_t TotalCorrect = 0;
+	for(
+		uint32_t SampleIndex = 0;
+		SampleIndex < Predictions->NumRows;
+		SampleIndex++
+	)
+	{
+		uint32_t PredictedLabel = ArgMax(
+			GetMatrixRow(Predictions, SampleIndex), Predictions->NumColumns
+		);
+		uint32_t ActualLabel = ArgMax(
+			GetMatrixRow(Labels, SampleIndex), Predictions->NumColumns
+		);
+		if(PredictedLabel == ActualLabel)
+		{
+			TotalCorrect++;
+		}
+	}
+
+	return (float) TotalCorrect / (float) Predictions->NumRows;
+}
+
+void CudaTrainNeuralNetMiniBatch(
+	neural_net_trainer* Trainer,
+	neural_net* NeuralNet,
+	matrix* Inputs,
+	matrix* Labels,
+	uint32_t Epochs,
+	bool ShouldInitDenseLayers = true,
+	bool PrintStatus = false,
+	float TrainingAccuracyThreshold = 1.1f,
+	float LossThreshold = -1.0f,
+	neural_net* FullBatchNnViewer = NULL
+)
+{
+	// NOTE: Train with minibatches sampled from Inputs
+	assert(Trainer->MiniBatchData != NULL);
+	assert(Trainer->MiniBatchLabels != NULL);
+
+	matrix* MiniBatchData = Trainer->MiniBatchData;
+	matrix* MiniBatchLabels = Trainer->MiniBatchLabels;
+	uint32_t TrainingSamples = Inputs->NumRows;
+	uint32_t MiniBatchSize = MiniBatchData->NumRows;
+	
+	if(ShouldInitDenseLayers)
+	{
+		InitDenseLayers(NeuralNet);
+	}
+
+	int_shuffler IntShuffler = MakeIntShuffler(TrainingSamples);
+
+	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
+	{
+		ShuffleInts(&IntShuffler);
+		for(
+			uint32_t BatchIndex = 0;
+			BatchIndex < TrainingSamples / MiniBatchSize;
+			BatchIndex++
+		)
+		{
+			// NOTE: create mini batch
+			uint32_t IndexHandleStart = BatchIndex * MiniBatchSize;
+			for(
+				uint32_t IndexHandle = IndexHandleStart;
+				IndexHandle < (IndexHandleStart + MiniBatchSize);
+				IndexHandle++
+			)
+			{
+				int RowToGet = IntShuffler.Result[IndexHandle];
+				float* DataRow = GetMatrixRow(Inputs, RowToGet);
+				float* LabelsRow = GetMatrixRow(Labels, RowToGet);
+
+				float* MiniBatchDataRow = GetMatrixRow(
+					MiniBatchData, IndexHandle - IndexHandleStart
+				);
+				float* MiniBatchLabelRow = GetMatrixRow(
+					MiniBatchLabels, IndexHandle - IndexHandleStart
+				);
+
+				memcpy(
+					MiniBatchDataRow,
+					DataRow,
+					MiniBatchData->NumColumns * sizeof(float)
+				);
+				memcpy(
+					MiniBatchLabelRow,
+					LabelsRow,
+					MiniBatchLabels->NumColumns * sizeof(float)
+				);
+			}
+
+			// NOTE: train on mini batch
+			CudaTrainNeuralNet(
+				Trainer,
+				NeuralNet,
+				MiniBatchData,
+				MiniBatchLabels,
+				1,
+				false,
+				false
+			);
+		}
+
+		float Loss = -1.0f;
+		CudaNeuralNetForward(
+			FullBatchNnViewer,
+			Inputs,
+			Labels,
+			NULL,
+			&Loss
+		);
+		float TrainingAccuracy = CudaTopOneAccuracy(
+			FullBatchNnViewer, Inputs, Labels
+		);
+		if(PrintStatus)
+		{
+			printf(
+				"Epoch %d Loss, Accuracy: %f, %f\n",
+				Epoch,
+				Loss,
+				TrainingAccuracy
+			);
+		}
+		if(
+			TrainingAccuracy >= TrainingAccuracyThreshold ||
+			Loss <= LossThreshold
+		)
+		{
+			break;
 		}
 	}
 }
@@ -2566,6 +2776,156 @@ int main(int argc, char* argv[])
 		);
 	}
 	// SECTION STOP: forward XOR with close to perfect initial weights
+
+	// SECTION START: MNIST with MSE
+	printf("Starting MNIST training\n");
+	{
+		uint32_t MiniBatchSize = 32;
+		uint32_t TrainingSamples = 2048;
+		uint32_t TestSamples = 100;
+		uint32_t Epochs = 100;
+		float TrainingAccuracyThreshold = 0.99f;
+		float LossThreshold = -0.00001f;
+		float LearningRate = 0.1f;
+		bool PrintTraining = true;
+
+		snprintf(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			"%s/%s",
+			TestDataDirectory,
+			"mnist_train.csv"
+		);
+		matrix* Data;
+		matrix* Labels;
+		CudaAllocMatrix(&Data, TrainingSamples, MNIST_DATA_SIZE);
+		MatrixClear(Data);
+		CudaAllocMatrix(&Labels, TrainingSamples, MNIST_CLASS_COUNT);
+		MatrixClear(Labels);
+		int Result = LoadMnistDigitCsv(
+			Data, Labels, TrainingSamples, FilePathBuffer
+		);
+
+		if(Result == 0)
+		{
+			neural_net* NeuralNet = NULL;
+			CudaAllocNeuralNet(&NeuralNet, MiniBatchSize, MNIST_DATA_SIZE);
+			uint32_t HiddenDim = 64;
+			CudaAddDense(NeuralNet, HiddenDim);
+			CudaAddRelu(NeuralNet);
+			CudaAddDense(NeuralNet, HiddenDim);
+			CudaAddRelu(NeuralNet);
+			CudaAddDense(NeuralNet, MNIST_CLASS_COUNT);
+
+			neural_net_trainer* Trainer;
+			CudaAllocNeuralNetTrainer(
+				&Trainer,
+				NeuralNet,
+				LearningRate,
+				LayerType_Mse,
+				MiniBatchSize,
+				Labels->NumColumns
+			);
+
+			neural_net* FullBatchNnViewer = NULL;
+			CudaResizedNeuralNet(&FullBatchNnViewer, NeuralNet, TrainingSamples);
+			neural_net* TestNnViewer = NULL;
+			CudaResizedNeuralNet(&TestNnViewer, NeuralNet, TestSamples);
+
+			CudaTrainNeuralNetMiniBatch(
+				Trainer,
+				NeuralNet,
+				Data,
+				Labels,
+				Epochs,
+				true,
+				PrintTraining,
+				TrainingAccuracyThreshold,
+				LossThreshold,
+				FullBatchNnViewer
+			);
+
+			float TrainingAccuracy = CudaTopOneAccuracy(
+				FullBatchNnViewer, Data, Labels
+			);
+			printf("TrainingAccuracy = %f\n", TrainingAccuracy);
+
+			snprintf(
+				FilePathBuffer,
+				sizeof(FilePathBuffer),
+				"%s/%s",
+				TestDataDirectory,
+				"mnist_test.csv"
+			);
+
+			matrix* TestData = NULL;
+			matrix* TestLabels = NULL;
+			CudaAllocMatrix(&TestData, TestSamples, MNIST_DATA_SIZE);
+			CudaAllocMatrix(&TestLabels, TestSamples, MNIST_CLASS_COUNT);
+			Result = LoadMnistDigitCsv(
+				TestData, TestLabels, TestSamples, FilePathBuffer
+			);
+			float TestAccuracy = CudaTopOneAccuracy(
+				TestNnViewer, TestData, TestLabels
+			);
+			printf("TestAccuracy = %f\n", TestAccuracy);
+
+			if(TestAccuracy < 0.9f)
+			{
+				printf("MNIST training test failed\n");
+			}
+
+			// SECTION START: test model saving and loading
+			// snprintf(
+			// 	FilePathBuffer,
+			// 	sizeof(FilePathBuffer),
+			// 	"%s/%s",
+			// 	TestDataDirectory,
+			// 	"models"
+			// );
+			// if(!PathFileExistsA(FilePathBuffer))
+			// {
+			// 	CreateDirectoryA(
+			// 		FilePathBuffer,
+			// 		NULL
+			// 	);
+			// }
+			// snprintf(
+			// 	FilePathBuffer,
+			// 	sizeof(FilePathBuffer),
+			// 	"%s/models/mnist_%dsamples.model",
+			// 	TestDataDirectory,
+			// 	TrainingSamples
+			// );
+			// SaveNeuralNet(NeuralNet, FilePathBuffer);
+
+			// neural_net* LoadedNeuralNet;
+			// LoadNeuralNet(
+			// 	&LoadedNeuralNet, FilePathBuffer, TestSamples, 4
+			// );
+
+			// float LoadedNnTestAccuracy = TopOneAccuracy(
+			// 	LoadedNeuralNet, TestData, TestLabels
+			// );
+			// printf("Loaded NN TestAccuracy = %f\n", LoadedNnTestAccuracy);
+
+			// SECTION STOP: test model saving and loading
+
+			// SECTION START: test freeing neural nets
+			// TODO: add a check for available memory before and after
+			// FreeNeuralNetTrainer(Trainer);
+			// FreeNeuralNet(NeuralNet);
+			// FreeNeuralNet(LoadedNeuralNet);
+			// FreeResizedNeuralNet(FullBatchNnViewer);
+			// FreeResizedNeuralNet(TestNnViewer);
+			// SECTION STOP: test freeing neural nets
+		}
+		else
+		{
+			printf("Unable to run mnist test\n");
+		}
+	}
+	// SECTION STOP: MNIST with MSE
 
 	return 0;
 }

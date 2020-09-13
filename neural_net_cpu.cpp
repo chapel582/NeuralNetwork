@@ -1,7 +1,8 @@
 #include "neural_net.h"
 
 #include "matrix.h"
-#include "matrix.cpp"
+
+#include "int_shuffler.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -11,22 +12,6 @@
 
 // TODO: Need to have a platform independent way of handling threads
 #include <windows.h>
-
-int ArgMax(float* Array, uint64_t ArrayLength)
-{
-	int Index = 0;
-	int Result = Index;
-	float Highest = Array[Index];
-	for(Index = 1; Index < ArrayLength; Index++)
-	{
-		if(Array[Index] > Highest)
-		{
-			Highest = Array[Index];
-			Result = Index;
-		}
-	}
-	return Result;
-}
 
 void InitMatrix(matrix* Matrix, uint32_t NumRows, uint32_t NumColumns)
 {
@@ -86,88 +71,6 @@ void AllocM1M2TransposeMultResultMatrix(matrix** Result, matrix* M1, matrix* M2)
 void AllocMatrixMeanResult(matrix** Result, matrix* M1)
 {
 	AllocMatrix(Result, 1, M1->NumColumns);
-}
-
-struct linked_int;
-struct linked_int
-{
-	int Value;
-	linked_int* Next;
-};
-
-struct linked_int_list
-{
-	linked_int* Head;
-	uint32_t Length;
-};
-
-struct int_shuffler
-{
-	linked_int_list List;
-	uint32_t Range;
-	linked_int* Cells;
-	int* Result;
-};
-
-int_shuffler MakeIntShuffler(uint32_t Range)
-{
-	int_shuffler IntShuffler = {};
-	IntShuffler.Range = Range;
-	IntShuffler.Cells = (linked_int*) malloc(sizeof(linked_int) * Range);
-	IntShuffler.Result = (int*) malloc(sizeof(int) * Range);
-	return IntShuffler;
-}
-
-void FreeIntShuffler(int_shuffler IntShuffler)
-{
-	free(IntShuffler.Cells);
-	free(IntShuffler.Result);
-}
-
-void ShuffleInts(int_shuffler* IntShuffler)
-{
-	// NOTE: needed for mini batch shuffling
-	linked_int_list* List = &IntShuffler->List;
-	List->Length = 0;
-
-	linked_int* Previous = IntShuffler->Cells + 0;
-	Previous->Value = 0;
-	List->Head = Previous;
-	List->Length++;
-	linked_int* Current = Previous;
-	for(uint32_t Index = 1; Index < IntShuffler->Range; Index++)
-	{
-		Current = IntShuffler->Cells + Index;
-		Current->Value = Index;
-
-		Previous->Next = Current;
-		Previous = Current;
-		List->Length++;
-	}
-	Current->Next = NULL;
-
-	int ArrayIndex = 0;
-	for(uint32_t Index = 0; Index < IntShuffler->Range; Index++)
-	{
-		int Value = rand() % List->Length;
-		Current = List->Head;
-		for(int LinkIndex = 0; LinkIndex < Value; LinkIndex++)	
-		{
-			Previous = Current;
-			Current = Current->Next;
-		}
-		if(Current == List->Head)
-		{
-			List->Head = Current->Next;
-		}
-		else
-		{
-			Previous->Next = Current->Next;
-		}
-
-		List->Length--;
-		IntShuffler->Result[ArrayIndex++] = Current->Value;
-	}
 }
 
 struct matrix_op_args

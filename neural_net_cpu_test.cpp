@@ -1,6 +1,10 @@
+#include "arg_max.h"
+
+#include "matrix.cpp"
 #include "neural_net_cpu.cpp"
 #include "matrix_test.cpp"
 #include "neural_net.cpp"
+#include "mnist_test.cpp"
 
 #include <stdio.h>
 #include <shlwapi.h>
@@ -79,86 +83,6 @@ void TestFloatResult(
 	{
 		printf("Failure in %s\n", TestName);
 	}
-}
-
-#define MNIST_CLASS_COUNT 10
-#define MNIST_DIMENSION 28
-#define MNIST_DATA_SIZE (MNIST_DIMENSION * MNIST_DIMENSION)
-#define MNIST_MAX_PIXEL_VALUE 255.0f
-int LoadMnistDigitCsv(
-	matrix** DataResult,
-	matrix** LabelsResult,
-	uint32_t MnistTrainSamples,
-	char* FilePath
-)
-{
-	// NOTE: returns normalized data and label matrices
-
-	char ReadBuffer[8];
-	
-	AllocMatrix(DataResult, MnistTrainSamples, MNIST_DATA_SIZE);
-	matrix* Data = *DataResult;
-	MatrixClear(Data);
-
-	AllocMatrix(LabelsResult, MnistTrainSamples, MNIST_CLASS_COUNT);
-	matrix* Labels = *LabelsResult;
-	MatrixClear(Labels);
-
-	FILE* File;
-	fopen_s(&File, FilePath, "r");
-	if(File == NULL)
-	{
-		goto error;
-	}
-
-	for(
-		uint32_t SampleIndex = 0;
-		SampleIndex < MnistTrainSamples;
-		SampleIndex++
-	)
-	{
-		// NOTE: read label
-		fread(ReadBuffer, 1, 1, File);
-		int Label = atoi(ReadBuffer);
-		// NOTE: b/c we cleared labels matrix, only need to set 1.0f value
-		SetMatrixElement(Labels, SampleIndex, Label, 1.0f);
-
-		// NOTE: read comma
-		fread(ReadBuffer, 1, 1, File);
-
-		for(uint32_t DataIndex = 0; DataIndex < MNIST_DATA_SIZE; DataIndex++)
-		{
-			char* ReadTo = ReadBuffer;
-			while(true)
-			{
-				fread(ReadTo, 1, 1, File);
-				if((*ReadTo == ',') || (*ReadTo == '\n'))
-				{
-					*ReadTo = 0;
-					break;
-				}
-				else
-				{
-					ReadTo++;
-				}
-			}
-
-			int PixelValue = atoi(ReadBuffer);
-			SetMatrixElement(
-				Data,
-				SampleIndex,
-				DataIndex,
-				((float) PixelValue) / MNIST_MAX_PIXEL_VALUE
-			);
-		}
-	}
-	fclose(File);
-	goto end;
-
-error:
-	return 1;
-end:
-	return 0;
 }
 
 int main(int argc, char* argv[])
@@ -1805,10 +1729,15 @@ int main(int argc, char* argv[])
 			TestDataDirectory,
 			"mnist_train.csv"
 		);
+
 		matrix* Data;
 		matrix* Labels;
+		AllocMatrix(&Data, TrainingSamples, MNIST_DATA_SIZE);
+		MatrixClear(Data);
+		AllocMatrix(&Labels, TrainingSamples, MNIST_CLASS_COUNT);
+		MatrixClear(Labels);
 		int Result = LoadMnistDigitCsv(
-			&Data, &Labels, TrainingSamples, FilePathBuffer
+			Data, Labels, TrainingSamples, FilePathBuffer
 		);
 
 		if(Result == 0)
@@ -1867,10 +1796,15 @@ int main(int argc, char* argv[])
 				TestDataDirectory,
 				"mnist_test.csv"
 			);
+
 			matrix* TestData;
 			matrix* TestLabels;
+			AllocMatrix(&TestData, TestSamples, MNIST_DATA_SIZE);
+			MatrixClear(TestData);
+			AllocMatrix(&TestLabels, TestSamples, MNIST_CLASS_COUNT);
+			MatrixClear(TestLabels);
 			Result = LoadMnistDigitCsv(
-				&TestData, &TestLabels, TestSamples, FilePathBuffer
+				TestData, TestLabels, TestSamples, FilePathBuffer
 			);
 			float TestAccuracy = TopOneAccuracy(
 				TestNnViewer, TestData, TestLabels
