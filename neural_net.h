@@ -2,6 +2,9 @@
 
 #include "matrix.h"
 
+// TODO: Need to have a platform independent way of handling threads
+#include <windows.h>
+
 struct dense_layer
 {
 	/* NOTE: 
@@ -34,4 +37,74 @@ struct mse_train_data
 	matrix LayerGradient;
 };
 
+typedef enum
+{
+	LayerType_Dense,
+	LayerType_Relu,
+	LayerType_Softmax,
+	LayerType_CrossEntropy,
+	LayerType_SoftmaxCrossEntropy,
+	LayerType_Mse,
+	LayerType_Count
+} layer_type;
+
+struct layer_link;
+struct layer_link
+{
+	layer_type Type;
+	void* Data;
+	matrix* Output;
+	layer_link* Next;
+	layer_link* Previous;
+};
+
+struct matrix_op_args
+{
+	float Float;
+	matrix* M1;
+	matrix* M2;
+	matrix* Result;
+	int Start;
+	int Stride;
+};
+struct matrix_op_jobs
+{
+	uint32_t NumThreads;
+	matrix_op_args* Args;
+	HANDLE* Handles; // TODO: make this platform independent
+};
+
+struct neural_net
+{
+	uint32_t NumLayers;
+	uint32_t BatchSize;
+	uint32_t InputDim;
+	layer_link* FirstLink;
+	layer_link* LastLink;
+
+	// NOTE: op jobs if needed 
+	matrix_op_jobs* MatrixOpJobs;
+};
+
+struct neural_net_trainer
+{
+	neural_net* NeuralNet;
+	void** TrainDataArray;
+	matrix* MiniBatchData;
+	matrix* MiniBatchLabels;
+};
+
+void InitDenseLayers(neural_net* NeuralNet);
+void AllocMatrixOpJobs(matrix_op_jobs** Result, uint32_t NumThreads);
+float MeanSquaredForward(
+	matrix_op_jobs* MatrixOpJobs, matrix* Predictions, matrix* Labels
+);
+void AddMeanSquared(neural_net* NeuralNet);
+void MeanSquaredBack(
+	matrix_op_jobs* MatrixOpJobs,
+	matrix* Predictions, 
+	matrix* Labels, 
+	mse_train_data* TrainData
+);
+#define NEURAL_NET_H
 #endif

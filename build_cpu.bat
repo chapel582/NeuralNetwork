@@ -20,5 +20,6 @@ rem NOTE: -GR- Disabled runtime type information
 rem NOTE: -MT is used so that we don't use the c-runtime library DLL but 
 rem CONT: statically link instead 
 rem NOTE: -Od should be removed for non-debug builds
-cl %CommonCompilerFlags% ..\neural_net_cpu_test.cpp -Fmneural_net_cpu.map /link %CommonLinkerFlags% Shlwapi.lib
+cl %CommonCompilerFlags% ..\neural_net_cpu_test.cpp -Fmneural_net_cpu_test.map /link %CommonLinkerFlags% Shlwapi.lib
+cl %CommonCompilerFlags% ..\neural_net_cpu_performance.cpp -Fmneural_net_cpu_performance.map /link %CommonLinkerFlags% Shlwapi.lib
 popd

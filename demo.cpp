@@ -4,6 +4,8 @@
 #include <crtdbg.h>
 #endif
 
+#include "performance.cpp"
+
 #include "neural_net_cpu.cpp"
 #include "vector.h"
 
@@ -30,27 +32,6 @@ struct win32_offscreen_buffer
 win32_offscreen_buffer GlobalBackBuffer = {};
 
 #define WINDOW_STYLE (WS_OVERLAPPEDWINDOW | WS_VISIBLE)
-
-// START SECTION: Performance counters
-int64_t GlobalPerformanceFrequency = 0;
-inline int64_t Win32GetWallClock(void)
-{
-	LARGE_INTEGER Result;
-	// NOTE: QueryPerformanceCounter gets wall clock time
-	QueryPerformanceCounter(&Result);
-	return Result.QuadPart;
-}
-
-inline float Win32GetSecondsElapsed(int64_t Start, int64_t End)
-{
-	float Result;
-	Result = (
-		((float) (End - Start)) / 
-		((float) GlobalPerformanceFrequency)
-	);
-	return Result;
-}
-// STOP SECTION: Performance counters
 
 void Win32BufferToWindow(win32_offscreen_buffer* BackBuffer, HDC DeviceContext)
 {
