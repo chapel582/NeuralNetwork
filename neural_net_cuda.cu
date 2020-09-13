@@ -738,14 +738,15 @@ void CudaAllocMeanSquared(mse_layer** Result, uint32_t MaxThreads)
 	cudaMallocManaged(&Layer->SquaredErrorResults, MaxThreads * sizeof(float));
 }
 
-__global__
+__device__
 void CudaMeanSquaredForwardCore(
-	float* SquaredErrorResults, matrix* Predictions, matrix* Labels
+	float* SquaredErrorResults,
+	matrix* Predictions,
+	matrix* Labels,
+	int Start,
+	int Stride
 )
 {
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;
-	int Stride = gridDim.x * blockDim.x;
-
 	float Result = 0.0f;
 	for(uint32_t Row = Start; Row < Predictions->NumRows; Row += Stride)
 	{
@@ -762,6 +763,19 @@ void CudaMeanSquaredForwardCore(
 	*SquaredError = Result;
 }
 
+__global__
+void CudaMeanSquaredForwardThread(
+	float* SquaredErrorResults, matrix* Predictions, matrix* Labels
+)
+{
+	int Start = blockIdx.x * blockDim.x + threadIdx.x;
+	int Stride = gridDim.x * blockDim.x;
+
+	CudaMeanSquaredForwardCore(
+		SquaredErrorResults, Predictions, Labels, Start, Stride
+	);		
+}
+
 float CudaMeanSquaredForward(
 	mse_layer* Layer, matrix* Predictions, matrix* Labels
 )
@@ -770,7 +784,7 @@ float CudaMeanSquaredForward(
 	int NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize);
 	assert((NumBlocks * BlockSize) < Layer->MaxThreads);
 	memset(Layer->SquaredErrorResults, 0, Layer->MaxThreads * sizeof(float));
-	CudaMeanSquaredForwardCore<<<NumBlocks, BlockSize>>>(
+	CudaMeanSquaredForwardThread<<<NumBlocks, BlockSize>>>(
 		Layer->SquaredErrorResults, Predictions, Labels
 	);
 	cudaDeviceSynchronize();
@@ -1926,45 +1940,45 @@ int main(int argc, char* argv[])
 	}
 	// SECTION STOP: RELU Tests
 
-	// // SECTION START: MSE Test
-	// {
-	// 	uint32_t BatchSize = 8;
-	// 	uint32_t NumClasses = 4;
+	// SECTION START: MSE Test
+	{
+		uint32_t BatchSize = 8;
+		uint32_t NumClasses = 4;
 
-	// 	matrix* Predictions = NULL;
-	// 	CudaAllocMatrix(&Predictions, BatchSize, NumClasses);
-	// 	FillOneHotMatrix(Predictions);
+		matrix* Predictions = NULL;
+		CudaAllocMatrix(&Predictions, BatchSize, NumClasses);
+		FillOneHotMatrix(Predictions);
 		
-	// 	matrix* Labels = NULL; 
-	// 	CudaAllocMatrix(&Labels, BatchSize, NumClasses);
-	// 	FillOneHotMatrix(Labels);
+		matrix* Labels = NULL; 
+		CudaAllocMatrix(&Labels, BatchSize, NumClasses);
+		FillOneHotMatrix(Labels);
 
-	// 	mse_layer* MseLayer = NULL;
-	// 	CudaAllocMeanSquared(&MseLayer, 1 << 14);
+		mse_layer* MseLayer = NULL;
+		CudaAllocMeanSquared(&MseLayer, 1 << 14);
 
-	// 	float Loss = CudaMeanSquaredForward(MseLayer, Predictions, Labels);
-	// 	TestFloatResult(
-	// 		Loss,
-	// 		FilePathBuffer,
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaMSELoss",
-	// 		EndianString
-	// 	);
+		float Loss = CudaMeanSquaredForward(MseLayer, Predictions, Labels);
+		TestFloatResult(
+			Loss,
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaMSELoss",
+			EndianString
+		);
 
-	// 	mse_train_data* TrainData = NULL;
-	// 	CudaAllocMseTrainData(&TrainData, BatchSize, NumClasses);
-	// 	CudaMeanSquaredBack(Predictions, Labels, TrainData);
-	// 	TestMatrixResult(
-	// 		&TrainData->LayerGradient,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaMSEBackOK",
-	// 		EndianString
-	// 	);
-	// }
-	// // SECTION STOP: MSE Test
+		mse_train_data* TrainData = NULL;
+		CudaAllocMseTrainData(&TrainData, BatchSize, NumClasses);
+		CudaMeanSquaredBack(Predictions, Labels, TrainData);
+		TestMatrixResult(
+			&TrainData->LayerGradient,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaMSEBackOK",
+			EndianString
+		);
+	}
+	// SECTION STOP: MSE Test
 
 	// // TODO: maybe add another MSE test with non-zero resulting loss and 
 	// // CONT: layer gradient
