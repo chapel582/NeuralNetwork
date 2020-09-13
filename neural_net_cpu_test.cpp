@@ -1831,103 +1831,28 @@ int main(int argc, char* argv[])
 				&Trainer,
 				NeuralNet,
 				LearningRate,
-				LayerType_Mse
+				LayerType_Mse,
+				MiniBatchSize,
+				Labels->NumColumns
 			);
 
-			neural_net* FullBatchNnViewer;
+			neural_net* FullBatchNnViewer = NULL;
 			ResizedNeuralNet(&FullBatchNnViewer, NeuralNet, TrainingSamples);
-			neural_net* TestNnViewer;
+			neural_net* TestNnViewer = NULL;
 			ResizedNeuralNet(&TestNnViewer, NeuralNet, TestSamples);
 
-			matrix* MiniBatchData;		
-			matrix* MiniBatchLabels;
-			AllocMatrix(&MiniBatchData, MiniBatchSize, Data->NumColumns);
-			AllocMatrix(&MiniBatchLabels, MiniBatchSize, Labels->NumColumns);
-
-			int_shuffler IntShuffler = MakeIntShuffler(TrainingSamples);
-
-			InitDenseLayers(NeuralNet);
-			for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
-			{
-				ShuffleInts(&IntShuffler);
-				for(
-					uint32_t BatchIndex = 0;
-					BatchIndex < TrainingSamples / MiniBatchSize;
-					BatchIndex++
-				)
-				{
-					// NOTE: create mini batch
-					uint32_t IndexHandleStart = BatchIndex * MiniBatchSize;
-					for(
-						uint32_t IndexHandle = IndexHandleStart;
-						IndexHandle < (IndexHandleStart + MiniBatchSize);
-						IndexHandle++
-					)
-					{
-						int RowToGet = IntShuffler.Result[IndexHandle];
-						float* DataRow = GetMatrixRow(Data, RowToGet);
-						float* LabelsRow = GetMatrixRow(Labels, RowToGet);
-
-						float* MiniBatchDataRow = GetMatrixRow(
-							MiniBatchData, IndexHandle - IndexHandleStart
-						);
-						float* MiniBatchLabelRow = GetMatrixRow(
-							MiniBatchLabels, IndexHandle - IndexHandleStart
-						);
-
-						memcpy(
-							MiniBatchDataRow,
-							DataRow,
-							MiniBatchData->NumColumns * sizeof(float)
-						);
-						memcpy(
-							MiniBatchLabelRow,
-							LabelsRow,
-							MiniBatchLabels->NumColumns * sizeof(float)
-						);
-					}
-
-
-					// NOTE: train on mini batch
-					TrainNeuralNet(
-						Trainer,
-						NeuralNet,
-						MiniBatchData,
-						MiniBatchLabels,
-						1,
-						false,
-						false
-					);
-				}
-
-				float Loss = -1.0f;
-				NeuralNetForward(
-					FullBatchNnViewer,
-					Data,
-					Labels,
-					NULL,
-					&Loss
-				);
-				float TrainingAccuracy = TopOneAccuracy(
-					FullBatchNnViewer, Data, Labels
-				);
-				if(PrintTraining)
-				{
-					printf(
-						"Epoch %d Loss, Accuracy: %f, %f\n",
-						Epoch,
-						Loss,
-						TrainingAccuracy
-					);
-				}
-				if(
-					TrainingAccuracy >= TrainingAccuracyThreshold ||
-					Loss <= LossThreshold
-				)
-				{
-					break;
-				} 
-			}
+			TrainNeuralNetMiniBatch(
+				Trainer,
+				NeuralNet,
+				Data,
+				Labels,
+				Epochs,
+				true,
+				PrintTraining,
+				TrainingAccuracyThreshold,
+				LossThreshold,
+				FullBatchNnViewer
+			);
 
 			float TrainingAccuracy = TopOneAccuracy(
 				FullBatchNnViewer, Data, Labels
