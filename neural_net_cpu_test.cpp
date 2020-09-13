@@ -1,5 +1,6 @@
 #include "neural_net_cpu.cpp"
 #include "matrix_test.cpp"
+#include "neural_net.cpp"
 
 #include <stdio.h>
 #include <shlwapi.h>

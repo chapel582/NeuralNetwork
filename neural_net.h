@@ -34,4 +34,48 @@ struct mse_train_data
 	matrix LayerGradient;
 };
 
+typedef enum
+{
+	LayerType_Dense,
+	LayerType_Relu,
+	LayerType_Softmax,
+	LayerType_CrossEntropy,
+	LayerType_SoftmaxCrossEntropy,
+	LayerType_Mse,
+	LayerType_Count
+} layer_type;
+
+struct layer_link;
+struct layer_link
+{
+	layer_type Type;
+	void* Data;
+	matrix* Output;
+	layer_link* Next;
+	layer_link* Previous;
+};
+
+struct neural_net
+{
+	uint32_t NumLayers;
+	uint32_t BatchSize;
+	uint32_t InputDim;
+	layer_link* FirstLink;
+	layer_link* LastLink;
+
+	// NOTE: op jobs if needed 
+	void* MatrixOpJobs;
+};
+
+struct neural_net_trainer
+{
+	neural_net* NeuralNet;
+	void** TrainDataArray;
+	matrix* MiniBatchData;
+	matrix* MiniBatchLabels;
+};
+
+void InitDenseLayers(neural_net* NeuralNet);
+
+#define NEURAL_NET_H
 #endif

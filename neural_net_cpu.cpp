@@ -88,31 +88,6 @@ void AllocMatrixMeanResult(matrix** Result, matrix* M1)
 	AllocMatrix(Result, 1, M1->NumColumns);
 }
 
-inline float RandUnity()
-{
-	// NOTE: returns random float between 0.0 and 1.0 
-	return ((float) (rand() % RAND_MAX)) / ((float) RAND_MAX);
-}
-
-void FillRandomMatrix(matrix* Matrix, float Range)
-{
-	// NOTE: fills matrix with values randomly between 0.0f and Range
-	// NOTE: values should never be 0.0f exactly
-	for(uint32_t Row = 0; Row < Matrix->NumRows; Row++)
-	{
-		for(uint32_t Col = 0; Col < Matrix->NumColumns; Col++)
-		{
-			float Value;
-			do
-			{
-				// NOTE: need small values to prevent runaway
-				Value = Range * RandUnity();
-			} while(Value == 0.0f);
-			SetMatrixElement(Matrix, Row, Col, Value);
-		}
-	}
-}
-
 struct linked_int;
 struct linked_int
 {
@@ -1268,37 +1243,6 @@ void MeanSquaredBack(
 	);
 }
 
-typedef enum
-{
-	LayerType_Dense,
-	LayerType_Relu,
-	LayerType_Softmax,
-	LayerType_CrossEntropy,
-	LayerType_SoftmaxCrossEntropy,
-	LayerType_Mse,
-	LayerType_Count
-} layer_type;
-
-struct layer_link;
-struct layer_link
-{
-	layer_type Type;
-	void* Data;
-	matrix* Output;
-	layer_link* Next;
-	layer_link* Previous;
-};
-
-struct neural_net
-{
-	uint32_t NumLayers;
-	uint32_t BatchSize;
-	uint32_t InputDim;
-	layer_link* FirstLink;
-	layer_link* LastLink;
-	matrix_op_jobs* MatrixOpJobs;
-};
-
 void AllocNeuralNet(
 	neural_net** Result,
 	uint32_t BatchSize,
@@ -1310,7 +1254,7 @@ void AllocNeuralNet(
 	*NeuralNet = {};
 	NeuralNet->BatchSize = BatchSize;
 	NeuralNet->InputDim = InputDim;
-	AllocMatrixOpJobs(&NeuralNet->MatrixOpJobs, NumThreads);
+	AllocMatrixOpJobs((matrix_op_jobs**) &NeuralNet->MatrixOpJobs, NumThreads);
 	*Result = NeuralNet;
 }
 
@@ -1468,11 +1412,12 @@ void ResizedNeuralNet(
 	// CONT: loss after doing all the mini batches in an epoch. It's also a 
 	// CONT: slightly smaller memory profile
 
+	matrix_op_jobs* MatrixOpJobs = (matrix_op_jobs*) Source->MatrixOpJobs;
 	AllocNeuralNet(
 		Result,
 		NewBatchSize,
 		Source->InputDim,
-		Source->MatrixOpJobs->NumThreads
+		MatrixOpJobs->NumThreads
 	);
 	neural_net* NeuralNet = *Result;
 
@@ -1550,7 +1495,7 @@ void NeuralNetForward(
 	matrix* Outputs = NULL;
 	float Loss = -1.0f;
 	layer_link* LayerLink = NeuralNet->FirstLink;
-	matrix_op_jobs* MatrixOpJobs = NeuralNet->MatrixOpJobs;
+	matrix_op_jobs* MatrixOpJobs = (matrix_op_jobs*) NeuralNet->MatrixOpJobs;
 	for(
 		uint32_t LayerIndex = 0;
 		LayerIndex < NeuralNet->NumLayers;
@@ -1651,14 +1596,6 @@ int Predict(neural_net* NeuralNet, matrix* Inputs, uint32_t BatchIndex)
 		GetMatrixRow(Predictions, BatchIndex), Predictions->NumColumns
 	);
 }
-
-struct neural_net_trainer
-{
-	neural_net* NeuralNet;
-	void** TrainDataArray;
-	matrix* MiniBatchData;
-	matrix* MiniBatchLabels;
-};
 
 void AllocNeuralNetTrainer(
 	neural_net_trainer** Result,
@@ -1841,41 +1778,6 @@ void FreeNeuralNetTrainer(neural_net_trainer* Trainer)
 	free(Trainer);
 }
 
-void InitDenseLayers(neural_net* NeuralNet)
-{
-	layer_link* LayerLink = NeuralNet->FirstLink;
-	for(
-		uint32_t LayerIndex = 0;
-		LayerIndex < NeuralNet->NumLayers;
-		LayerIndex++
-	)
-	{
-		switch(LayerLink->Type)
-		{
-			case(LayerType_Dense):
-			{
-				dense_layer* DenseLayer = (dense_layer*) LayerLink->Data;
-				FillRandomMatrix(
-					&DenseLayer->Weights,
-					(
-						1.0f / (
-							DenseLayer->Weights.NumRows + 
-							DenseLayer->Weights.NumColumns
-						)
-					)
-				);
-				FillRandomMatrix(&DenseLayer->Bias, 0.001f);
-				break;
-			}
-			default:
-			{				
-				break;
-			}
-		}
-		LayerLink = LayerLink->Next;
-	}
-}
-
 void TrainNeuralNet(
 	neural_net_trainer* Trainer,
 	neural_net* NeuralNet,
@@ -1891,7 +1793,7 @@ void TrainNeuralNet(
 		InitDenseLayers(NeuralNet);
 	}
 
-	matrix_op_jobs* MatrixOpJobs = NeuralNet->MatrixOpJobs;
+	matrix_op_jobs* MatrixOpJobs = (matrix_op_jobs*) NeuralNet->MatrixOpJobs;
 	layer_link* LayerLink;
 	float Loss = -1.0f;
 	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
