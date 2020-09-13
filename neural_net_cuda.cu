@@ -1,3 +1,5 @@
+// TODO: handle cudaMallocManaged failures
+// TODO: query max block size
 #include "neural_net.h"
 
 #include "matrix.h"
@@ -111,6 +113,7 @@ void CudaAllocMatrixMeanResult(matrix** Result, matrix* M1)
 
 inline int GetNumBlocks(int Range, int BlockSize)
 {
+	// TODO: query for max block size?
 	return (Range + BlockSize - 1) / BlockSize;
 }
 
@@ -661,7 +664,118 @@ void CudaReluBack(
 	cudaDeviceSynchronize();
 }
 
-#define SAVE_RESULTS 1
+struct mean_squared_layer
+{
+	int MaxThreads;
+	float* SquaredErrorResults;
+};
+
+void CudaAllocMeanSquared(mean_squared_layer** Result, int MaxThreads)
+{
+	cudaMallocManaged(Result, sizeof(mean_squared_layer));
+	mean_squared_layer* Layer = *Result;
+	*Layer = {};
+	Layer->MaxThreads = MaxThreads;
+	cudaMallocManaged(&Layer->SquaredErrorResults, MaxThreads * sizeof(float));
+}
+
+__global__
+void CudaMeanSquaredForwardCore(
+	float* SquaredErrorResults, matrix* Predictions, matrix* Labels
+)
+{
+	int Start = blockIdx.x * blockDim.x + threadIdx.x;
+	int Stride = gridDim.x * blockDim.x;
+
+	float Result = 0.0f;
+	for(uint32_t Row = Start; Row < Predictions->NumRows; Row += Stride)
+	{
+		for(uint32_t Col = 0; Col < Predictions->NumColumns; Col++)
+		{
+			float Difference = (
+				CudaGetMatrixElement(Predictions, Row, Col) - 
+				CudaGetMatrixElement(Labels, Row, Col)
+			);
+			Result += Difference * Difference;
+		}
+	}
+	float* SquaredError = SquaredErrorResults + Start;
+	*SquaredError = Result;
+}
+
+float CudaMeanSquaredForward(
+	mean_squared_layer* Layer, matrix* Predictions, matrix* Labels
+)
+{
+	int BlockSize = 256;
+	int NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize);
+	assert((NumBlocks * BlockSize) < Layer->MaxThreads);
+	memset(Layer->SquaredErrorResults, 0, Layer->MaxThreads * sizeof(float));
+	CudaMeanSquaredForwardCore<<<NumBlocks, BlockSize>>>(
+		Layer->SquaredErrorResults, Predictions, Labels
+	);
+	cudaDeviceSynchronize();
+		
+	int NumThreadsRan; 
+	if(Layer->MaxThreads < Predictions->NumRows)
+	{
+		NumThreadsRan = Layer->MaxThreads;
+	}
+	else
+	{
+		NumThreadsRan = Predictions->NumRows;
+	}
+
+	float Sum = 0;
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < NumThreadsRan;
+		ThreadIndex++
+	)
+	{
+		float* SquaredError = Layer->SquaredErrorResults + ThreadIndex;
+		Sum += *SquaredError;
+	}
+
+	// NOTE: this definition of MSE with a two in the denominator helps cancel 
+	// CONT: out a two in the back derivation 
+	float Mean = Sum / (2 * Predictions->NumRows);
+	return Mean;
+}
+
+void CudaAllocMseTrainData(
+	mse_train_data** Result, uint32_t BatchSize, uint32_t PredictionDim
+)
+{
+	cudaMallocManaged(Result, sizeof(mse_train_data));
+	mse_train_data* TrainData = *Result;
+	*TrainData = {};
+	CudaInitMatrix(&TrainData->LayerGradient, BatchSize, PredictionDim);
+}
+
+// TODO: implement me
+// void FreeMseTrainData(mse_train_data* TrainData)
+// {
+// 	FreeMatrixData(TrainData->LayerGradient);
+// 	free(TrainData);
+// }
+
+void CudaMeanSquaredBack(
+	matrix* Predictions, matrix* Labels, mse_train_data* TrainData
+)
+{
+	CudaMatrixSubtract(
+		Labels, Predictions, &TrainData->LayerGradient
+	);
+	CudaMatrixScalarMult(
+		1.0f / Predictions->NumColumns,
+		&TrainData->LayerGradient,
+		&TrainData->LayerGradient
+	);
+}
+
+
+#define SAVE_RESULTS 0
 matrix* TestMatrixResult(
 	matrix* M1,
 	char* FilePathBuffer,
@@ -703,6 +817,40 @@ matrix* TestMatrixResult(
 	}
 
 	return CompareTo;
+}
+
+void TestFloatResult(
+	float Result,
+	char* FilePathBuffer,
+	size_t FilePathBufferSize,
+	char* TestDataDirectory,
+	const char* TestName,
+	char* EndianString
+)
+{
+	snprintf(
+		FilePathBuffer,
+		FilePathBufferSize,
+		"%s/%s_%s.data",
+		TestDataDirectory,
+		TestName,
+		EndianString
+	);
+	FILE* File;
+#if SAVE_RESULTS
+	fopen_s(&File, FilePathBuffer, "w");
+	fwrite(&Result, 1, sizeof(float), File);
+	fclose(File);
+#endif 
+	float Expected;
+	fopen_s(&File, FilePathBuffer, "r");
+	fread(&Expected, 1, sizeof(float), File);
+	fclose(File);
+
+	if(Expected != Result)
+	{
+		printf("Failure in %s\n", TestName);
+	}
 }
 
 int main(int argc, char* argv[])
@@ -1076,5 +1224,48 @@ int main(int argc, char* argv[])
 		);
 	}
 	// SECTION STOP: RELU Tests
+
+	// SECTION START: MSE Test
+	{
+		uint32_t BatchSize = 8;
+		uint32_t NumClasses = 4;
+
+		matrix* Predictions = NULL;
+		CudaAllocMatrix(&Predictions, BatchSize, NumClasses);
+		FillOneHotMatrix(Predictions);
+		
+		matrix* Labels = NULL; 
+		CudaAllocMatrix(&Labels, BatchSize, NumClasses);
+		FillOneHotMatrix(Labels);
+
+		mean_squared_layer* MseLayer = NULL;
+		CudaAllocMeanSquared(&MseLayer, 1 << 14);
+
+		float Loss = CudaMeanSquaredForward(MseLayer, Predictions, Labels);
+		TestFloatResult(
+			Loss,
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaMSELoss",
+			EndianString
+		);
+
+		mse_train_data* TrainData = NULL;
+		CudaAllocMseTrainData(&TrainData, BatchSize, NumClasses);
+		CudaMeanSquaredBack(Predictions, Labels, TrainData);
+		TestMatrixResult(
+			&TrainData->LayerGradient,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaMSEBackOK",
+			EndianString
+		);
+	}
+	// SECTION STOP: MSE Test
+
+	// TODO: maybe add another MSE test with non-zero resulting loss and 
+	// CONT: layer gradient
 	return 0;
 }

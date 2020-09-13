@@ -737,10 +737,12 @@ int main(int argc, char* argv[])
 			"MSELoss",
 			EndianString
 		);
+		printf("%f\n", Loss);
 
 		mse_train_data* TrainData;
 		AllocMseTrainData(&TrainData, BatchSize, NumClasses);
 		MeanSquaredBack(MatrixOpJobs, Predictions, Labels, TrainData);
+		PrintMatrix(&TrainData->LayerGradient);
 		TestMatrixResult(
 			&TrainData->LayerGradient,
 			FilePathBuffer, 

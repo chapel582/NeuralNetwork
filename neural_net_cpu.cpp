@@ -1232,11 +1232,6 @@ float MeanSquaredForward(
 	return Mean;
 }
 
-struct mse_train_data
-{
-	matrix LayerGradient;
-};
-
 void AllocMseTrainData(
 	mse_train_data** Result, uint32_t BatchSize, uint32_t PredictionDim
 )

@@ -29,4 +29,9 @@ struct relu_train_data
 	matrix LayerGradient;
 };
 
+struct mse_train_data
+{
+	matrix LayerGradient;
+};
+
 #endif
