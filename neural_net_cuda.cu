@@ -2288,5 +2288,284 @@ int main(int argc, char* argv[])
 	}
 	// SECTION STOP: XOR Forward
 
+		// SECTION START: forward XOR with good initial weights
+	{
+		// NOTE: in keras, 8 neurons and one dense layer + RELU seems 
+		// CONT: to work. no momentum needed for high-dimensional stuff 
+		// CONT: 2000 epochs were needed too
+		uint32_t BatchSize = 4;
+		uint32_t InputDim = 2;
+		uint32_t HiddenDim = 8;
+		uint32_t OutputDim = 1;
+
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		SetMatrixElement(Inputs, 0, 0, 0.0f);
+		SetMatrixElement(Inputs, 0, 1, 0.0f);
+
+		SetMatrixElement(Inputs, 1, 0, 0.0f);
+		SetMatrixElement(Inputs, 1, 1, 1.0f);
+
+		SetMatrixElement(Inputs, 2, 0, 1.0f);
+		SetMatrixElement(Inputs, 2, 1, 0.0f);
+
+		SetMatrixElement(Inputs, 3, 0, 1.0f);
+		SetMatrixElement(Inputs, 3, 1, 1.0f);
+
+		neural_net* NeuralNet = NULL;
+		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
+		CudaAddDense(NeuralNet, HiddenDim);
+		CudaAddRelu(NeuralNet);
+		CudaAddDense(NeuralNet, OutputDim);
+
+		matrix* Labels;
+		CudaAllocMatrix(&Labels, BatchSize, OutputDim);
+		
+		// NOTE: this is set up to converge to a xor function
+		SetMatrixElement(Labels, 0, 0, 0.0f);
+		SetMatrixElement(Labels, 1, 0, 1.0f);
+		SetMatrixElement(Labels, 2, 0, 1.0f);
+		SetMatrixElement(Labels, 3, 0, 0.0f);
+
+		neural_net_trainer* Trainer;
+		CudaAllocNeuralNetTrainer(
+			&Trainer,
+			NeuralNet,
+			0.1f,
+			LayerType_Mse
+		);
+
+		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
+		float FirstLayerWeights[] = {
+			-0.6014779f,
+			0.6651714f,
+			-0.33612493f,
+			0.7284934f,
+			0.49762666f,
+			-0.33008203f,
+			-0.66281337f,
+			-0.7124146f,
+			0.6431314f,
+			0.6383204f,
+			-0.44230828f,
+			-0.7284539f,
+			0.7563155f,
+			0.29757506f,
+			-0.2068302f,
+			-0.04522699f
+		};
+		memcpy(
+			DenseLayer->Weights.Data,
+			FirstLayerWeights,
+			sizeof(FirstLayerWeights)
+		);
+		float FirstLayerBias[] = {
+			-3.8563503e-06f,
+			-6.3853890e-01f,
+			0.0f,
+			-6.8683788e-05f,
+			6.1795981e-05f,
+			-2.9789597e-01f,
+			0.0f,
+			0.0f
+		};
+		memcpy(
+			DenseLayer->Bias.Data,
+			FirstLayerBias,
+			sizeof(FirstLayerBias)
+		);
+
+		dense_layer* SecondDenseLayer = (dense_layer*) (
+			NeuralNet->FirstLink->Next->Next->Data
+		);
+		float SecondLayerWeights[] = {
+			0.7474555f,
+			-1.215051f,
+			-0.55316067f,
+			0.9348931f,
+			0.5940272f,
+			-0.53985476f,
+			-0.42657337f,
+			-0.5814253f
+		};
+		memcpy(
+			SecondDenseLayer->Weights.Data,
+			SecondLayerWeights,
+			sizeof(SecondLayerWeights)
+		);
+		float SecondLayerBias[] = {0.0f};
+		memcpy(
+			SecondDenseLayer->Bias.Data,
+			SecondLayerBias,
+			sizeof(SecondLayerBias)
+		);
+
+		CudaTrainNeuralNet(
+			Trainer,
+			NeuralNet,
+			Inputs,
+			Labels,
+			100,
+			false
+		);
+
+		matrix* Predictions = NULL;
+		CudaNeuralNetForward(
+			NeuralNet,
+			Inputs,
+			NULL,
+			&Predictions,
+			NULL
+		);
+		
+		TestMatrixResult(
+			Predictions,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaForwardXor_StaticTraining",
+			EndianString
+		);
+	}
+	// SECTION STOP: forward XOR with good initial weights
+
+	// SECTION START: forward XOR with close to perfect initial weights
+	{
+		// NOTE: in keras, 8 neurons and one dense layer + RELU seems 
+		// CONT: to work. no momentum needed for high-dimensional stuff 
+		// CONT: 2000 epochs were needed too
+		uint32_t BatchSize = 4;
+		uint32_t InputDim = 2;
+		uint32_t HiddenDim = 8;
+		uint32_t OutputDim = 1;
+
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		SetMatrixElement(Inputs, 0, 0, 0.0f);
+		SetMatrixElement(Inputs, 0, 1, 0.0f);
+
+		SetMatrixElement(Inputs, 1, 0, 0.0f);
+		SetMatrixElement(Inputs, 1, 1, 1.0f);
+
+		SetMatrixElement(Inputs, 2, 0, 1.0f);
+		SetMatrixElement(Inputs, 2, 1, 0.0f);
+
+		SetMatrixElement(Inputs, 3, 0, 1.0f);
+		SetMatrixElement(Inputs, 3, 1, 1.0f);
+
+		neural_net* NeuralNet = NULL;
+		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
+		CudaAddDense(NeuralNet, HiddenDim);
+		CudaAddRelu(NeuralNet);
+		CudaAddDense(NeuralNet, OutputDim);
+
+		matrix* Labels;
+		CudaAllocMatrix(&Labels, BatchSize, OutputDim);
+		
+		// NOTE: this is set up to converge to a xor function
+		SetMatrixElement(Labels, 0, 0, 0.0f);
+		SetMatrixElement(Labels, 1, 0, 1.0f);
+		SetMatrixElement(Labels, 2, 0, 1.0f);
+		SetMatrixElement(Labels, 3, 0, 0.0f);
+
+		neural_net_trainer* Trainer;
+		CudaAllocNeuralNetTrainer(
+			&Trainer, NeuralNet, 0.1f, LayerType_Mse
+		);
+
+		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
+		float FirstLayerWeights[] = {
+			-0.6f,
+			0.7f,
+			-0.3f,
+			0.7f,
+			0.5f,
+			-0.3f,
+			-0.7f,
+			-0.7f,
+			0.6f,
+			0.6f,
+			-0.4f,
+			-0.7f,
+			0.8f,
+			0.3f,
+			-0.2f,
+			0.0f
+		};
+		memcpy(
+			DenseLayer->Weights.Data,
+			FirstLayerWeights,
+			sizeof(FirstLayerWeights)
+		);
+		float FirstLayerBias[] = {
+			-4e-06f,
+			-6e-01f,
+			0.0f,
+			-7e-05f,
+			6e-05f,
+			-3e-01f,
+			0.0f,
+			0.0f
+		};
+		memcpy(
+			DenseLayer->Bias.Data,
+			FirstLayerBias,
+			sizeof(FirstLayerBias)
+		);
+
+		dense_layer* SecondDenseLayer = (dense_layer*) (
+			NeuralNet->FirstLink->Next->Next->Data
+		);
+		float SecondLayerWeights[] = {
+			0.7f,
+			-1.0f,
+			-0.6f,
+			0.9f,
+			0.6f,
+			-0.5f,
+			-0.4f,
+			-0.6f
+		};
+		memcpy(
+			SecondDenseLayer->Weights.Data,
+			SecondLayerWeights,
+			sizeof(SecondLayerWeights)
+		);
+		float SecondLayerBias[] = {0.0f};
+		memcpy(
+			SecondDenseLayer->Bias.Data,
+			SecondLayerBias,
+			sizeof(SecondLayerBias)
+		);
+
+		CudaTrainNeuralNet(
+			Trainer,
+			NeuralNet,
+			Inputs,
+			Labels,
+			100,
+			false
+		);
+
+		matrix* Predictions = NULL;
+		CudaNeuralNetForward(
+			NeuralNet,
+			Inputs,
+			NULL,
+			&Predictions,
+			NULL
+		);
+		
+		TestMatrixResult(
+			Predictions,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaForwardXor_Convergence",
+			EndianString
+		);
+	}
+	// SECTION STOP: forward XOR with close to perfect initial weights
+
 	return 0;
 }
