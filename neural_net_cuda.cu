@@ -1493,11 +1493,10 @@ void CudaTrainNeuralNetCore(
 	matrix* Labels,
 	uint32_t Epochs,
 	uint32_t Start,
-	uint32_t Stride
+	uint32_t Stride,
+	bool PrintStatus = false
 )
 {
-	bool PrintStatus = false;
-
 	layer_link* LayerLink;
 	float Loss = -1.0f;
 	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
