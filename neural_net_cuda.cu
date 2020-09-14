@@ -1897,6 +1897,7 @@ void CudaTrainNeuralNetMiniBatchThread(
 {
 	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
 	uint32_t Stride = gridDim.x * blockDim.x;
+	printf("Start? %d\n", Start);
 
 	matrix* MiniBatchData = Trainer->MiniBatchData;
 	matrix* MiniBatchLabels = Trainer->MiniBatchLabels;
@@ -1908,7 +1909,12 @@ void CudaTrainNeuralNetMiniBatchThread(
 
 	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
 	{
-		CudaShuffleInts(IntShuffler, &CurandState);
+		if(Start == 0)
+		{
+			CudaShuffleInts(IntShuffler, &CurandState);
+			printf("Shuffled!\n");	
+		}
+
 		for(
 			uint32_t BatchIndex = 0;
 			BatchIndex < TrainingSamples / MiniBatchSize;
@@ -1948,6 +1954,7 @@ void CudaTrainNeuralNetMiniBatchThread(
 						MiniBatchLabels->NumColumns * sizeof(float)
 					);
 				}
+				printf("Got a new mini batch!\n");
 			}
 			__syncthreads();
 
@@ -1980,7 +1987,7 @@ void CudaTrainNeuralNetMiniBatchThread(
 		float TrainingAccuracy = CudaTopOneAccuracyDevice(
 			FullBatchNnViewer, Inputs, Labels, Start, Stride
 		);
-		if(PrintStatus)
+		if(PrintStatus && Start == 0)
 		{
 			printf(
 				"Epoch %d Loss, Accuracy: %f, %f\n",
@@ -2038,6 +2045,7 @@ void CudaTrainNeuralNetMiniBatch(
 		LossThreshold,
 		FullBatchNnViewer
 	);
+	cudaError_t Result = cudaDeviceSynchronize();
 
 	// TODO: free int shuffler
 }
