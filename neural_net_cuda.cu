@@ -390,15 +390,11 @@ void CudaMatrixMultM1M2Transpose(matrix* M1, matrix* M2, matrix* Result)
 	cudaDeviceSynchronize();
 }
 
-__global__
-void CudaMatrixScalarMultCore(float Scalar, matrix* M1, matrix* Result)
+__device__
+void CudaMatrixScalarMultCore(
+	float Scalar, matrix* M1, matrix* Result, int Start, int Stride
+)
 {
-	// NOTE: this basically indexes by the thread index, but b/c the thread 
-	// CONT: index is reset on every block, 
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
-	// NOTE: this basically calculates the # of threads
-	int Stride = blockDim.x * gridDim.x;
-
 	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
 	{
 		for(uint32_t Column = 0; Column < M1->NumColumns; Column++)
@@ -409,16 +405,8 @@ void CudaMatrixScalarMultCore(float Scalar, matrix* M1, matrix* Result)
 	}
 }
 
-void CudaMatrixScalarMult(float Scalar, matrix* M1, matrix* Result)
-{
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
-	CudaMatrixScalarMultCore<<<NumBlocks, BlockSize>>>(Scalar, M1, Result);
-	cudaDeviceSynchronize();
-}
-
 __global__
-void CudaMatrixSubtractCore(matrix* M1, matrix* M2, matrix* Result)
+void CudaMatrixScalarMultThread(float Scalar, matrix* M1, matrix* Result)
 {
 	// NOTE: this basically indexes by the thread index, but b/c the thread 
 	// CONT: index is reset on every block, 
@@ -426,6 +414,22 @@ void CudaMatrixSubtractCore(matrix* M1, matrix* M2, matrix* Result)
 	// NOTE: this basically calculates the # of threads
 	int Stride = blockDim.x * gridDim.x;
 
+	CudaMatrixScalarMultCore(Scalar, M1, Result, Start, Stride);
+}
+
+void CudaMatrixScalarMult(float Scalar, matrix* M1, matrix* Result)
+{
+	int BlockSize = 256;
+	int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
+	CudaMatrixScalarMultThread<<<NumBlocks, BlockSize>>>(Scalar, M1, Result);
+	cudaDeviceSynchronize();
+}
+
+__device__
+void CudaMatrixSubtractCore(
+	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+)
+{
 	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
 	{
 		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
@@ -441,6 +445,18 @@ void CudaMatrixSubtractCore(matrix* M1, matrix* M2, matrix* Result)
 	}
 }
 
+__global__
+void CudaMatrixSubtractThread(matrix* M1, matrix* M2, matrix* Result)
+{
+	// NOTE: this basically indexes by the thread index, but b/c the thread 
+	// CONT: index is reset on every block, 
+	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	// NOTE: this basically calculates the # of threads
+	int Stride = blockDim.x * gridDim.x;
+
+	CudaMatrixSubtractCore(M1, M2, Result, Start, Stride);
+}
+
 void CudaMatrixSubtract(matrix* M1, matrix* M2, matrix* Result)
 {
 	assert(M1->NumRows == M2->NumRows);
@@ -449,7 +465,7 @@ void CudaMatrixSubtract(matrix* M1, matrix* M2, matrix* Result)
 	int BlockSize = 256;
 	int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
 
-	CudaMatrixSubtractCore<<<BlockSize, NumBlocks>>>(M1, M2, Result);
+	CudaMatrixSubtractThread<<<BlockSize, NumBlocks>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
 }
 
@@ -866,18 +882,46 @@ void CudaAllocMseTrainData(
 // 	free(TrainData);
 // }
 
+__device__
+void CudaMseBackCore(
+	matrix* Predictions,
+	matrix* Labels,
+	mse_train_data* TrainData,
+	int Start,
+	int Stride
+)
+{
+	CudaMatrixSubtractCore(
+		Labels, Predictions, &TrainData->LayerGradient, Start, Stride
+	);
+	CudaMatrixScalarMultCore(
+		1.0f / Predictions->NumColumns,
+		&TrainData->LayerGradient,
+		&TrainData->LayerGradient,
+		Start,
+		Stride
+	);
+}
+
+__global__
+void CudaMseBackThread(
+	matrix* Predictions, matrix* Labels, mse_train_data* TrainData
+)
+{
+	int Start = blockIdx.x * blockDim.x + threadIdx.x;
+	int Stride = blockDim.x * gridDim.x;
+
+	CudaMseBackCore(Predictions, Labels, TrainData, Start, Stride);
+}
+
 void CudaMeanSquaredBack(
 	matrix* Predictions, matrix* Labels, mse_train_data* TrainData
 )
 {
-	CudaMatrixSubtract(
-		Labels, Predictions, &TrainData->LayerGradient
-	);
-	CudaMatrixScalarMult(
-		1.0f / Predictions->NumColumns,
-		&TrainData->LayerGradient,
-		&TrainData->LayerGradient
-	);
+	int BlockSize = 256;
+	int NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize);
+	CudaMseBackThread<<<NumBlocks, BlockSize>>>(Predictions, Labels, TrainData);
+	cudaDeviceSynchronize();
 }
 
 void CudaAllocNeuralNet(
@@ -1324,6 +1368,118 @@ void CudaAllocNeuralNetTrainer(
 	CudaAllocMatrix(&Trainer->MiniBatchLabels, MiniBatchSize, OutputDim);
 }
 
+// void CudaTrainNeuralNetCore()
+// {
+// 	layer_link* LayerLink;
+// 	float Loss = -1.0f;
+// 	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
+// 	{
+// 		matrix* Predictions = NULL;
+// 		CudaNeuralNetForwardCore(
+// 			NeuralNet,
+// 			Inputs,
+// 			Labels,
+// 			&Predictions,
+// 			&Loss
+// 		);
+// 		__syncthreads();
+// 		// if(PrintStatus)
+// 		// {
+// 		// 	printf("Epoch %d Loss: %f\n", Epoch, Loss);
+// 		// }
+
+// 		matrix* NextLayerGradient = NULL;
+// 		LayerLink = NeuralNet->LastLink;
+// 		for(
+// 			int32_t LayerIndex = ((int32_t) NeuralNet->NumLayers) - 1;
+// 			LayerIndex >= 0;
+// 			LayerIndex--
+// 		)
+// 		{
+// 			void* TrainData = Trainer->TrainDataArray[LayerIndex];
+// 			layer_link* PreviousLayer = LayerLink->Previous;
+// 			matrix* LayerInputs;
+// 			if(PreviousLayer != NULL)
+// 			{
+// 				LayerInputs = PreviousLayer->Output;
+// 			}
+// 			else
+// 			{
+// 				LayerInputs = Inputs;
+// 			}
+// 			switch(LayerLink->Type)
+// 			{
+// 				case(LayerType_Dense):
+// 				{
+// 					dense_layer_train_data* DenseTrain = (
+// 						(dense_layer_train_data*) TrainData
+// 					);
+// 					CudaDenseBackCore(
+// 						LayerInputs,
+// 						NextLayerGradient,
+// 						(dense_layer*) LayerLink->Data,
+// 						DenseTrain
+// 					);
+// 					NextLayerGradient = &DenseTrain->LayerGradient;
+// 					break;
+// 				}
+// 				case(LayerType_Relu):
+// 				{
+// 					relu_train_data* ReluTrain = (relu_train_data*) TrainData;
+// 					CudaReluBackCore(
+// 						LayerInputs,
+// 						NextLayerGradient,
+// 						ReluTrain
+// 					);
+// 					NextLayerGradient = &ReluTrain->LayerGradient;
+// 					break;
+// 				}
+// 				case(LayerType_Softmax):
+// 				{
+// 					// TODO: implement
+// 					// assert(false);
+// 					break;
+// 				}
+// 				case(LayerType_Mse):
+// 				{
+// 					mse_train_data* MseTrain = (mse_train_data*) TrainData;
+
+// 					CudaMeanSquaredBackCore(
+// 						Predictions,
+// 						Labels,
+// 						MseTrain
+// 					);
+// 					NextLayerGradient = &MseTrain->LayerGradient;
+// 					break;
+// 				}
+// 				case(LayerType_CrossEntropy):
+// 				{
+// 					// TODO: implement
+// 					// cross_entropy_softmax_train_data* XEntropyTrain = (
+// 					// 	(cross_entropy_softmax_train_data*) TrainData
+// 					// );
+
+// 					// CrossEntropySoftmaxBack(
+// 					// 	MatrixOpJobs,
+// 					// 	Predictions, 
+// 					// 	Labels,
+// 					// 	XEntropyTrain
+// 					// );
+// 					// NextLayerGradient = &XEntropyTrain->LayerGradient;
+// 					break;
+// 				}
+// 				default:
+// 				{
+// 					break;
+// 				}
+// 			}
+// 			LayerLink = PreviousLayer;
+// 		}
+
+// 		__syncthreads();
+// 	}
+// }
+
 void CudaTrainNeuralNet(
 	neural_net_trainer* Trainer,
 	neural_net* NeuralNet,
@@ -1334,116 +1490,7 @@ void CudaTrainNeuralNet(
 	bool PrintStatus = false
 )
 {
-	if(ShouldInitDenseLayers)
-	{
-		InitDenseLayers(NeuralNet);
-	}
-
-	layer_link* LayerLink;
-	float Loss = -1.0f;
-	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
-	{
-		matrix* Predictions = NULL;
-		CudaNeuralNetForward(
-			NeuralNet,
-			Inputs,
-			Labels,
-			&Predictions,
-			&Loss
-		);
-		if(PrintStatus)
-		{
-			printf("Epoch %d Loss: %f\n", Epoch, Loss);
-		}
-
-		matrix* NextLayerGradient = NULL;
-		LayerLink = NeuralNet->LastLink;
-		for(
-			int32_t LayerIndex = ((int32_t) NeuralNet->NumLayers) - 1;
-			LayerIndex >= 0;
-			LayerIndex--
-		)
-		{
-			void* TrainData = Trainer->TrainDataArray[LayerIndex];
-			layer_link* PreviousLayer = LayerLink->Previous;
-			matrix* LayerInputs;
-			if(PreviousLayer != NULL)
-			{
-				LayerInputs = PreviousLayer->Output;
-			}
-			else
-			{
-				LayerInputs = Inputs;
-			}
-			switch(LayerLink->Type)
-			{
-				case(LayerType_Dense):
-				{
-					dense_layer_train_data* DenseTrain = (
-						(dense_layer_train_data*) TrainData
-					);
-					CudaDenseBack(
-						LayerInputs,
-						NextLayerGradient,
-						(dense_layer*) LayerLink->Data,
-						DenseTrain
-					);
-					NextLayerGradient = &DenseTrain->LayerGradient;
-					break;
-				}
-				case(LayerType_Relu):
-				{
-					relu_train_data* ReluTrain = (relu_train_data*) TrainData;
-					CudaReluBack(
-						LayerInputs,
-						NextLayerGradient,
-						ReluTrain
-					);
-					NextLayerGradient = &ReluTrain->LayerGradient;
-					break;
-				}
-				case(LayerType_Softmax):
-				{
-					assert(false);
-					break;
-				}
-				case(LayerType_Mse):
-				{
-					mse_train_data* MseTrain = (mse_train_data*) TrainData;
-
-					CudaMeanSquaredBack(
-						Predictions,
-						Labels,
-						MseTrain
-					);
-					NextLayerGradient = &MseTrain->LayerGradient;
-					break;
-				}
-				case(LayerType_CrossEntropy):
-				{
-					// TODO: implement
-					assert(false);
-					// cross_entropy_softmax_train_data* XEntropyTrain = (
-					// 	(cross_entropy_softmax_train_data*) TrainData
-					// );
-
-					// CrossEntropySoftmaxBack(
-					// 	MatrixOpJobs,
-					// 	Predictions, 
-					// 	Labels,
-					// 	XEntropyTrain
-					// );
-					// NextLayerGradient = &XEntropyTrain->LayerGradient;
-					break;
-				}
-				default:
-				{
-					break;
-				}
-			}
-			LayerLink = PreviousLayer;
-		}
-	}
+	
 }
 
 float CudaTopOneAccuracy(neural_net* NeuralNet, matrix* Inputs, matrix* Labels)
@@ -2248,63 +2295,63 @@ int main(int argc, char* argv[])
 	}
 	// SECTION STOP: Negative Relu NN test
 
-	// // SECTION START: One neuron training
-	// {
-	// 	uint32_t BatchSize = 5;
-	// 	uint32_t InputDim = 1;
+	// SECTION START: One neuron training
+	{
+		uint32_t BatchSize = 5;
+		uint32_t InputDim = 1;
 
-	// 	matrix* Inputs = NULL;
-	// 	CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-	// 	FillMatrixConsecutive(Inputs);
+		matrix* Inputs = NULL;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
 
-	// 	neural_net* NeuralNet = NULL;
-	// 	CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-	// 	CudaAddDense(NeuralNet, 1);
+		neural_net* NeuralNet = NULL;
+		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
+		CudaAddDense(NeuralNet, 1);
 
-	// 	// NOTE: should be equivalent to 2x + 1
-	// 	matrix* Labels;
-	// 	CudaAllocMatrix(&Labels, BatchSize, 1);
-	// 	SetMatrixElement(Labels, 0, 0, 3);
-	// 	SetMatrixElement(Labels, 1, 0, 5);
-	// 	SetMatrixElement(Labels, 2, 0, 7);
-	// 	SetMatrixElement(Labels, 3, 0, 9);
-	// 	SetMatrixElement(Labels, 4, 0, 11);
+		// NOTE: should be equivalent to 2x + 1
+		matrix* Labels;
+		CudaAllocMatrix(&Labels, BatchSize, 1);
+		SetMatrixElement(Labels, 0, 0, 3);
+		SetMatrixElement(Labels, 1, 0, 5);
+		SetMatrixElement(Labels, 2, 0, 7);
+		SetMatrixElement(Labels, 3, 0, 9);
+		SetMatrixElement(Labels, 4, 0, 11);
 
-	// 	neural_net_trainer* Trainer;
-	// 	CudaAllocNeuralNetTrainer(
-	// 		&Trainer,
-	// 		NeuralNet,
-	// 		0.01f,
-	// 		LayerType_Mse
-	// 	);
+		neural_net_trainer* Trainer;
+		CudaAllocNeuralNetTrainer(
+			&Trainer,
+			NeuralNet,
+			0.01f,
+			LayerType_Mse
+		);
 
-	// 	CudaTrainNeuralNet(
-	// 		Trainer,
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		Labels,
-	// 		100
-	// 	);
+		CudaTrainNeuralNet(
+			Trainer,
+			NeuralNet,
+			Inputs,
+			Labels,
+			100
+		);
 
-	// 	dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-	// 	TestMatrixResult(
-	// 		&DenseLayer->Weights,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaOneNeuronNN_Weights",
-	// 		EndianString
-	// 	);
-	// 	TestMatrixResult(
-	// 		&DenseLayer->Bias,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaOneNeuronNN_Bias",
-	// 		EndianString
-	// 	);
-	// }
-	// // SECTION STOP: One neuron training
+		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
+		// TestMatrixResult(
+		// 	&DenseLayer->Weights,
+		// 	FilePathBuffer, 
+		// 	sizeof(FilePathBuffer),
+		// 	TestDataDirectory,
+		// 	"CudaOneNeuronNN_Weights",
+		// 	EndianString
+		// );
+		// TestMatrixResult(
+		// 	&DenseLayer->Bias,
+		// 	FilePathBuffer, 
+		// 	sizeof(FilePathBuffer),
+		// 	TestDataDirectory,
+		// 	"CudaOneNeuronNN_Bias",
+		// 	EndianString
+		// );
+	}
+	// SECTION STOP: One neuron training
 
 	// // SECTION START: More one neuron training
 	// {
