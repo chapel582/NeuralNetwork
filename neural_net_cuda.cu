@@ -1,7 +1,6 @@
 // TODO: handle cudaMallocManaged failures
 // TODO: query max block size
 #include "arg_max.h"
-#include "int_shuffler.h"
 #include "neural_net.h"
 #include "matrix.h"
 
@@ -9,12 +8,25 @@
 #include "matrix.cpp"
 #include "mnist_test.cpp"
 #include "matrix_test.cpp"
+#include "int_shuffler.h"
 
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
 #include <assert.h>
+
+// NOTE: for int shuffler
+#include <curand.h>
+#include <curand_kernel.h>
+
+__device__
+float* CudaGetMatrixRow(matrix* Matrix, uint32_t Row)
+{
+	// TODO: handle asserts?
+	float* Element = Matrix->Data + Row * Matrix->NumColumns;
+	return Element;
+}
 
 __device__
 float CudaGetMatrixElement(matrix* Matrix, uint32_t Row, uint32_t Column)
@@ -1486,6 +1498,29 @@ void CudaAllocNeuralNetTrainer(
 }
 
 __device__
+float CudaNeuralNetCalculateLoss(neural_net* NeuralNet, matrix* Predictions)
+{
+	float Loss = -1.0f;
+	layer_link* LayerLink = NeuralNet->LastLink;
+	switch(LayerLink->Type)
+	{
+		case(LayerType_Mse):
+		{
+			mse_layer* MseLayer = (mse_layer*) LayerLink->Data;
+			Loss = CudaCalculateMse(MseLayer, Predictions);
+			break;
+		}
+		// NOTE: can add more loss types here
+		default:
+		{
+			// TODO: error logging
+			break;
+		}
+	}
+	return Loss;
+}
+
+__device__
 void CudaTrainNeuralNetCore(
 	neural_net_trainer* Trainer,
 	neural_net* NeuralNet,
@@ -1515,22 +1550,7 @@ void CudaTrainNeuralNetCore(
 		if(Start == 0)
 		{
 			// NOTE: loss summation is single-threaded
-			layer_link* LayerLink = NeuralNet->LastLink;
-			switch(LayerLink->Type)
-			{
-				case(LayerType_Mse):
-				{
-					mse_layer* MseLayer = (mse_layer*) LayerLink->Data;
-					Loss = CudaCalculateMse(MseLayer, Predictions);
-					break;
-				}
-				// NOTE: can add more loss types here
-				default:
-				{
-					// TODO: error logging
-					break;
-				}
-			}
+			Loss = CudaNeuralNetCalculateLoss(NeuralNet, Predictions);
 			if(PrintStatus)
 			{
 				printf("Epoch %d Loss: %f\n", Epoch, Loss);
@@ -1643,7 +1663,8 @@ void CudaTrainNeuralNetThread(
 	neural_net* NeuralNet,
 	matrix* Inputs,
 	matrix* Labels,
-	uint32_t Epochs
+	uint32_t Epochs,
+	bool PrintStatus = false
 )
 {
 	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1655,7 +1676,8 @@ void CudaTrainNeuralNetThread(
 		Labels,
 		Epochs,
 		Start,
-		Stride
+		Stride,
+		PrintStatus
 	);
 }
 
@@ -1682,9 +1704,69 @@ void CudaTrainNeuralNet(
 		NeuralNet,
 		Inputs,
 		Labels,
-		Epochs
+		Epochs,
+		PrintStatus
 	);
 	cudaDeviceSynchronize();
+}
+
+__device__
+int CudaArgMax(float* Array, uint64_t ArrayLength)
+{
+	int Index = 0;
+	int Result = Index;
+	float Highest = Array[Index];
+	for(Index = 1; Index < ArrayLength; Index++)
+	{
+		if(Array[Index] > Highest)
+		{
+			Highest = Array[Index];
+			Result = Index;
+		}
+	}
+	return Result;
+}
+
+__device__
+float CudaTopOneAccuracyDevice(
+	neural_net* NeuralNet,
+	matrix* Inputs,
+	matrix* Labels,
+	uint32_t Start,
+	uint32_t Stride
+)
+{
+	matrix* Predictions = NULL;
+	CudaNeuralNetForwardCore(
+		NeuralNet,
+		Inputs,
+		Labels,
+		&Predictions,
+		Start,
+		Stride
+	);
+	__syncthreads();
+	
+	uint32_t TotalCorrect = 0;
+	for(
+		uint32_t SampleIndex = 0;
+		SampleIndex < Predictions->NumRows;
+		SampleIndex++
+	)
+	{
+		uint32_t PredictedLabel = CudaArgMax(
+			CudaGetMatrixRow(Predictions, SampleIndex), Predictions->NumColumns
+		);
+		uint32_t ActualLabel = CudaArgMax(
+			CudaGetMatrixRow(Labels, SampleIndex), Predictions->NumColumns
+		);
+		if(PredictedLabel == ActualLabel)
+		{
+			TotalCorrect++;
+		}
+	}
+
+	return (float) TotalCorrect / (float) Predictions->NumRows;
 }
 
 float CudaTopOneAccuracy(neural_net* NeuralNet, matrix* Inputs, matrix* Labels)
@@ -1720,38 +1802,113 @@ float CudaTopOneAccuracy(neural_net* NeuralNet, matrix* Inputs, matrix* Labels)
 	return (float) TotalCorrect / (float) Predictions->NumRows;
 }
 
-void CudaTrainNeuralNetMiniBatch(
+// SECTION START: cuda version of int shuffler
+void CudaMakeIntShuffler(int_shuffler** Result, uint32_t Range)
+{
+	cudaMallocManaged(Result, sizeof(int_shuffler));
+	int_shuffler* IntShuffler = *Result;
+	*IntShuffler = {};
+	IntShuffler->Range = Range;
+	cudaMallocManaged(&IntShuffler->Cells, sizeof(linked_int) * Range);
+	cudaMallocManaged(&IntShuffler->Result, sizeof(int) * Range);
+}
+
+// TODO: implement me!
+// void FreeIntShuffler(int_shuffler IntShuffler)
+// {
+// 	free(IntShuffler.Cells);
+// 	free(IntShuffler.Result);
+// }
+
+// TODO: can this be parallelized?
+__device__
+void CudaShuffleInts(int_shuffler* IntShuffler, curandState_t* CurandState)
+{
+	// NOTE: needed for mini batch shuffling
+	linked_int_list* List = &IntShuffler->List;
+	List->Length = 0;
+
+	linked_int* Previous = IntShuffler->Cells + 0;
+	Previous->Value = 0;
+	List->Head = Previous;
+	List->Length++;
+	linked_int* Current = Previous;
+	for(uint32_t Index = 1; Index < IntShuffler->Range; Index++)
+	{
+		Current = IntShuffler->Cells + Index;
+		Current->Value = Index;
+
+		Previous->Next = Current;
+		Previous = Current;
+		List->Length++;
+	}
+	Current->Next = NULL;
+
+	int ArrayIndex = 0;
+	for(uint32_t Index = 0; Index < IntShuffler->Range; Index++)
+	{
+		float RandValue = (
+			curand_uniform(CurandState) * List->Length
+		);
+		int Value;
+		if((RandValue - (int) RandValue) >= 0.5f)
+		{
+			Value = (int) (RandValue + 1.0f);
+		}
+		else
+		{
+			Value = (int) RandValue;
+		}
+		
+		Current = List->Head;
+		for(int LinkIndex = 0; LinkIndex < Value; LinkIndex++)	
+		{
+			Previous = Current;
+			Current = Current->Next;
+		}
+		if(Current == List->Head)
+		{
+			List->Head = Current->Next;
+		}
+		else
+		{
+			Previous->Next = Current->Next;
+		}
+
+		List->Length--;
+		IntShuffler->Result[ArrayIndex++] = Current->Value;
+	}
+}
+// SECTION STOP: Int Shuffler
+
+__global__
+void CudaTrainNeuralNetMiniBatchThread(
 	neural_net_trainer* Trainer,
 	neural_net* NeuralNet,
 	matrix* Inputs,
 	matrix* Labels,
 	uint32_t Epochs,
-	bool ShouldInitDenseLayers = true,
+	int_shuffler* IntShuffler,
 	bool PrintStatus = false,
 	float TrainingAccuracyThreshold = 1.1f,
 	float LossThreshold = -1.0f,
 	neural_net* FullBatchNnViewer = NULL
 )
 {
-	// NOTE: Train with minibatches sampled from Inputs
-	assert(Trainer->MiniBatchData != NULL);
-	assert(Trainer->MiniBatchLabels != NULL);
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
+	uint32_t Stride = gridDim.x * blockDim.x;
 
 	matrix* MiniBatchData = Trainer->MiniBatchData;
 	matrix* MiniBatchLabels = Trainer->MiniBatchLabels;
 	uint32_t TrainingSamples = Inputs->NumRows;
 	uint32_t MiniBatchSize = MiniBatchData->NumRows;
-	
-	if(ShouldInitDenseLayers)
-	{
-		InitDenseLayers(NeuralNet);
-	}
 
-	int_shuffler IntShuffler = MakeIntShuffler(TrainingSamples);
+	curandState_t CurandState;
+	curand_init(0, 0, 1234, &CurandState);
 
 	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
 	{
-		ShuffleInts(&IntShuffler);
+		CudaShuffleInts(IntShuffler, &CurandState);
 		for(
 			uint32_t BatchIndex = 0;
 			BatchIndex < TrainingSamples / MiniBatchSize;
@@ -1759,58 +1916,69 @@ void CudaTrainNeuralNetMiniBatch(
 		)
 		{
 			// NOTE: create mini batch
-			uint32_t IndexHandleStart = BatchIndex * MiniBatchSize;
-			for(
-				uint32_t IndexHandle = IndexHandleStart;
-				IndexHandle < (IndexHandleStart + MiniBatchSize);
-				IndexHandle++
-			)
+			// TODO: may want to parallelize this
+			if(Start == 0)
 			{
-				int RowToGet = IntShuffler.Result[IndexHandle];
-				float* DataRow = GetMatrixRow(Inputs, RowToGet);
-				float* LabelsRow = GetMatrixRow(Labels, RowToGet);
+				uint32_t IndexHandleStart = BatchIndex * MiniBatchSize;
+				for(
+					uint32_t IndexHandle = IndexHandleStart;
+					IndexHandle < (IndexHandleStart + MiniBatchSize);
+					IndexHandle++
+				)
+				{
+					int RowToGet = IntShuffler->Result[IndexHandle];
+					float* DataRow = CudaGetMatrixRow(Inputs, RowToGet);
+					float* LabelsRow = CudaGetMatrixRow(Labels, RowToGet);
 
-				float* MiniBatchDataRow = GetMatrixRow(
-					MiniBatchData, IndexHandle - IndexHandleStart
-				);
-				float* MiniBatchLabelRow = GetMatrixRow(
-					MiniBatchLabels, IndexHandle - IndexHandleStart
-				);
+					float* MiniBatchDataRow = CudaGetMatrixRow(
+						MiniBatchData, IndexHandle - IndexHandleStart
+					);
+					float* MiniBatchLabelRow = CudaGetMatrixRow(
+						MiniBatchLabels, IndexHandle - IndexHandleStart
+					);
 
-				memcpy(
-					MiniBatchDataRow,
-					DataRow,
-					MiniBatchData->NumColumns * sizeof(float)
-				);
-				memcpy(
-					MiniBatchLabelRow,
-					LabelsRow,
-					MiniBatchLabels->NumColumns * sizeof(float)
-				);
+					memcpy(
+						MiniBatchDataRow,
+						DataRow,
+						MiniBatchData->NumColumns * sizeof(float)
+					);
+					memcpy(
+						MiniBatchLabelRow,
+						LabelsRow,
+						MiniBatchLabels->NumColumns * sizeof(float)
+					);
+				}
 			}
+			__syncthreads();
 
 			// NOTE: train on mini batch
-			CudaTrainNeuralNet(
+			CudaTrainNeuralNetCore(
 				Trainer,
 				NeuralNet,
 				MiniBatchData,
 				MiniBatchLabels,
 				1,
-				false,
+				Start,
+				Stride,
 				false
 			);
+			__syncthreads();
 		}
 
-		float Loss = -1.0f;
-		CudaNeuralNetForward(
+		matrix* Predictions = NULL;
+		CudaNeuralNetForwardCore(
 			FullBatchNnViewer,
 			Inputs,
 			Labels,
-			NULL,
-			&Loss
+			&Predictions,
+			Start,
+			Stride
 		);
-		float TrainingAccuracy = CudaTopOneAccuracy(
-			FullBatchNnViewer, Inputs, Labels
+		__syncthreads();
+		float Loss = CudaNeuralNetCalculateLoss(NeuralNet, Predictions);
+
+		float TrainingAccuracy = CudaTopOneAccuracyDevice(
+			FullBatchNnViewer, Inputs, Labels, Start, Stride
 		);
 		if(PrintStatus)
 		{
@@ -1829,6 +1997,49 @@ void CudaTrainNeuralNetMiniBatch(
 			break;
 		}
 	}
+}
+
+void CudaTrainNeuralNetMiniBatch(
+	neural_net_trainer* Trainer,
+	neural_net* NeuralNet,
+	matrix* Inputs,
+	matrix* Labels,
+	uint32_t Epochs,
+	bool ShouldInitDenseLayers = true,
+	bool PrintStatus = false,
+	float TrainingAccuracyThreshold = 1.1f,
+	float LossThreshold = -1.0f,
+	neural_net* FullBatchNnViewer = NULL
+)
+{
+	// NOTE: Train with minibatches sampled from Inputs
+	assert(Trainer->MiniBatchData != NULL);
+	assert(Trainer->MiniBatchLabels != NULL);
+	if(ShouldInitDenseLayers)
+	{
+		// TODO: we could probably parallelize this as well
+		InitDenseLayers(NeuralNet);
+	}
+
+	int_shuffler* IntShuffler;
+	CudaMakeIntShuffler(&IntShuffler, Inputs->NumRows);
+
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	CudaTrainNeuralNetMiniBatchThread<<<NumBlocks, BlockSize>>>(
+		Trainer,
+		NeuralNet,
+		Inputs,
+		Labels,
+		Epochs,
+		IntShuffler,
+		PrintStatus,
+		TrainingAccuracyThreshold,
+		LossThreshold,
+		FullBatchNnViewer
+	);
+
+	// TODO: free int shuffler
 }
 
 #define SAVE_RESULTS 0
@@ -3199,155 +3410,155 @@ int main(int argc, char* argv[])
 	}
 	// SECTION STOP: forward XOR with close to perfect initial weights
 
-	// // SECTION START: MNIST with MSE
-	// printf("Starting MNIST training\n");
-	// {
-	// 	uint32_t MiniBatchSize = 32;
-	// 	uint32_t TrainingSamples = 2048;
-	// 	uint32_t TestSamples = 100;
-	// 	uint32_t Epochs = 100;
-	// 	float TrainingAccuracyThreshold = 0.99f;
-	// 	float LossThreshold = -0.00001f;
-	// 	float LearningRate = 0.1f;
-	// 	bool PrintTraining = true;
+	// SECTION START: MNIST with MSE
+	printf("Starting MNIST training\n");
+	{
+		uint32_t MiniBatchSize = 32;
+		uint32_t TrainingSamples = 2048;
+		uint32_t TestSamples = 100;
+		uint32_t Epochs = 100;
+		float TrainingAccuracyThreshold = 0.99f;
+		float LossThreshold = -0.00001f;
+		float LearningRate = 0.1f;
+		bool PrintTraining = true;
 
-	// 	snprintf(
-	// 		FilePathBuffer,
-	// 		sizeof(FilePathBuffer),
-	// 		"%s/%s",
-	// 		TestDataDirectory,
-	// 		"mnist_train.csv"
-	// 	);
-	// 	matrix* Data;
-	// 	matrix* Labels;
-	// 	CudaAllocMatrix(&Data, TrainingSamples, MNIST_DATA_SIZE);
-	// 	MatrixClear(Data);
-	// 	CudaAllocMatrix(&Labels, TrainingSamples, MNIST_CLASS_COUNT);
-	// 	MatrixClear(Labels);
-	// 	int Result = LoadMnistDigitCsv(
-	// 		Data, Labels, TrainingSamples, FilePathBuffer
-	// 	);
+		snprintf(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			"%s/%s",
+			TestDataDirectory,
+			"mnist_train.csv"
+		);
+		matrix* Data;
+		matrix* Labels;
+		CudaAllocMatrix(&Data, TrainingSamples, MNIST_DATA_SIZE);
+		MatrixClear(Data);
+		CudaAllocMatrix(&Labels, TrainingSamples, MNIST_CLASS_COUNT);
+		MatrixClear(Labels);
+		int Result = LoadMnistDigitCsv(
+			Data, Labels, TrainingSamples, FilePathBuffer
+		);
 
-	// 	if(Result == 0)
-	// 	{
-	// 		neural_net* NeuralNet = NULL;
-	// 		CudaAllocNeuralNet(&NeuralNet, MiniBatchSize, MNIST_DATA_SIZE);
-	// 		uint32_t HiddenDim = 64;
-	// 		CudaAddDense(NeuralNet, HiddenDim);
-	// 		CudaAddRelu(NeuralNet);
-	// 		CudaAddDense(NeuralNet, HiddenDim);
-	// 		CudaAddRelu(NeuralNet);
-	// 		CudaAddDense(NeuralNet, MNIST_CLASS_COUNT);
+		if(Result == 0)
+		{
+			neural_net* NeuralNet = NULL;
+			CudaAllocNeuralNet(&NeuralNet, MiniBatchSize, MNIST_DATA_SIZE);
+			uint32_t HiddenDim = 64;
+			CudaAddDense(NeuralNet, HiddenDim);
+			CudaAddRelu(NeuralNet);
+			CudaAddDense(NeuralNet, HiddenDim);
+			CudaAddRelu(NeuralNet);
+			CudaAddDense(NeuralNet, MNIST_CLASS_COUNT);
 
-	// 		neural_net_trainer* Trainer;
-	// 		CudaAllocNeuralNetTrainer(
-	// 			&Trainer,
-	// 			NeuralNet,
-	// 			LearningRate,
-	// 			LayerType_Mse,
-	// 			MiniBatchSize,
-	// 			Labels->NumColumns
-	// 		);
+			neural_net_trainer* Trainer;
+			CudaAllocNeuralNetTrainer(
+				&Trainer,
+				NeuralNet,
+				LearningRate,
+				LayerType_Mse,
+				MiniBatchSize,
+				Labels->NumColumns
+			);
 
-	// 		neural_net* FullBatchNnViewer = NULL;
-	// 		CudaResizedNeuralNet(&FullBatchNnViewer, NeuralNet, TrainingSamples);
-	// 		neural_net* TestNnViewer = NULL;
-	// 		CudaResizedNeuralNet(&TestNnViewer, NeuralNet, TestSamples);
+			neural_net* FullBatchNnViewer = NULL;
+			CudaResizedNeuralNet(&FullBatchNnViewer, NeuralNet, TrainingSamples);
+			neural_net* TestNnViewer = NULL;
+			CudaResizedNeuralNet(&TestNnViewer, NeuralNet, TestSamples);
 
-	// 		CudaTrainNeuralNetMiniBatch(
-	// 			Trainer,
-	// 			NeuralNet,
-	// 			Data,
-	// 			Labels,
-	// 			Epochs,
-	// 			true,
-	// 			PrintTraining,
-	// 			TrainingAccuracyThreshold,
-	// 			LossThreshold,
-	// 			FullBatchNnViewer
-	// 		);
+			CudaTrainNeuralNetMiniBatch(
+				Trainer,
+				NeuralNet,
+				Data,
+				Labels,
+				Epochs,
+				true,
+				PrintTraining,
+				TrainingAccuracyThreshold,
+				LossThreshold,
+				FullBatchNnViewer
+			);
 
-	// 		float TrainingAccuracy = CudaTopOneAccuracy(
-	// 			FullBatchNnViewer, Data, Labels
-	// 		);
-	// 		printf("TrainingAccuracy = %f\n", TrainingAccuracy);
+			float TrainingAccuracy = CudaTopOneAccuracy(
+				FullBatchNnViewer, Data, Labels
+			);
+			printf("TrainingAccuracy = %f\n", TrainingAccuracy);
 
-	// 		snprintf(
-	// 			FilePathBuffer,
-	// 			sizeof(FilePathBuffer),
-	// 			"%s/%s",
-	// 			TestDataDirectory,
-	// 			"mnist_test.csv"
-	// 		);
+			snprintf(
+				FilePathBuffer,
+				sizeof(FilePathBuffer),
+				"%s/%s",
+				TestDataDirectory,
+				"mnist_test.csv"
+			);
 
-	// 		matrix* TestData = NULL;
-	// 		matrix* TestLabels = NULL;
-	// 		CudaAllocMatrix(&TestData, TestSamples, MNIST_DATA_SIZE);
-	// 		CudaAllocMatrix(&TestLabels, TestSamples, MNIST_CLASS_COUNT);
-	// 		Result = LoadMnistDigitCsv(
-	// 			TestData, TestLabels, TestSamples, FilePathBuffer
-	// 		);
-	// 		float TestAccuracy = CudaTopOneAccuracy(
-	// 			TestNnViewer, TestData, TestLabels
-	// 		);
-	// 		printf("TestAccuracy = %f\n", TestAccuracy);
+			matrix* TestData = NULL;
+			matrix* TestLabels = NULL;
+			CudaAllocMatrix(&TestData, TestSamples, MNIST_DATA_SIZE);
+			CudaAllocMatrix(&TestLabels, TestSamples, MNIST_CLASS_COUNT);
+			Result = LoadMnistDigitCsv(
+				TestData, TestLabels, TestSamples, FilePathBuffer
+			);
+			float TestAccuracy = CudaTopOneAccuracy(
+				TestNnViewer, TestData, TestLabels
+			);
+			printf("TestAccuracy = %f\n", TestAccuracy);
 
-	// 		if(TestAccuracy < 0.9f)
-	// 		{
-	// 			printf("MNIST training test failed\n");
-	// 		}
+			if(TestAccuracy < 0.9f)
+			{
+				printf("MNIST training test failed\n");
+			}
 
-	// 		// SECTION START: test model saving and loading
-	// 		// snprintf(
-	// 		// 	FilePathBuffer,
-	// 		// 	sizeof(FilePathBuffer),
-	// 		// 	"%s/%s",
-	// 		// 	TestDataDirectory,
-	// 		// 	"models"
-	// 		// );
-	// 		// if(!PathFileExistsA(FilePathBuffer))
-	// 		// {
-	// 		// 	CreateDirectoryA(
-	// 		// 		FilePathBuffer,
-	// 		// 		NULL
-	// 		// 	);
-	// 		// }
-	// 		// snprintf(
-	// 		// 	FilePathBuffer,
-	// 		// 	sizeof(FilePathBuffer),
-	// 		// 	"%s/models/mnist_%dsamples.model",
-	// 		// 	TestDataDirectory,
-	// 		// 	TrainingSamples
-	// 		// );
-	// 		// SaveNeuralNet(NeuralNet, FilePathBuffer);
+			// SECTION START: test model saving and loading
+			// snprintf(
+			// 	FilePathBuffer,
+			// 	sizeof(FilePathBuffer),
+			// 	"%s/%s",
+			// 	TestDataDirectory,
+			// 	"models"
+			// );
+			// if(!PathFileExistsA(FilePathBuffer))
+			// {
+			// 	CreateDirectoryA(
+			// 		FilePathBuffer,
+			// 		NULL
+			// 	);
+			// }
+			// snprintf(
+			// 	FilePathBuffer,
+			// 	sizeof(FilePathBuffer),
+			// 	"%s/models/mnist_%dsamples.model",
+			// 	TestDataDirectory,
+			// 	TrainingSamples
+			// );
+			// SaveNeuralNet(NeuralNet, FilePathBuffer);
 
-	// 		// neural_net* LoadedNeuralNet;
-	// 		// LoadNeuralNet(
-	// 		// 	&LoadedNeuralNet, FilePathBuffer, TestSamples, 4
-	// 		// );
+			// neural_net* LoadedNeuralNet;
+			// LoadNeuralNet(
+			// 	&LoadedNeuralNet, FilePathBuffer, TestSamples, 4
+			// );
 
-	// 		// float LoadedNnTestAccuracy = TopOneAccuracy(
-	// 		// 	LoadedNeuralNet, TestData, TestLabels
-	// 		// );
-	// 		// printf("Loaded NN TestAccuracy = %f\n", LoadedNnTestAccuracy);
+			// float LoadedNnTestAccuracy = TopOneAccuracy(
+			// 	LoadedNeuralNet, TestData, TestLabels
+			// );
+			// printf("Loaded NN TestAccuracy = %f\n", LoadedNnTestAccuracy);
 
-	// 		// SECTION STOP: test model saving and loading
+			// SECTION STOP: test model saving and loading
 
-	// 		// SECTION START: test freeing neural nets
-	// 		// TODO: add a check for available memory before and after
-	// 		// FreeNeuralNetTrainer(Trainer);
-	// 		// FreeNeuralNet(NeuralNet);
-	// 		// FreeNeuralNet(LoadedNeuralNet);
-	// 		// FreeResizedNeuralNet(FullBatchNnViewer);
-	// 		// FreeResizedNeuralNet(TestNnViewer);
-	// 		// SECTION STOP: test freeing neural nets
-	// 	}
-	// 	else
-	// 	{
-	// 		printf("Unable to run mnist test\n");
-	// 	}
-	// }
-	// // SECTION STOP: MNIST with MSE
+			// SECTION START: test freeing neural nets
+			// TODO: add a check for available memory before and after
+			// FreeNeuralNetTrainer(Trainer);
+			// FreeNeuralNet(NeuralNet);
+			// FreeNeuralNet(LoadedNeuralNet);
+			// FreeResizedNeuralNet(FullBatchNnViewer);
+			// FreeResizedNeuralNet(TestNnViewer);
+			// SECTION STOP: test freeing neural nets
+		}
+		else
+		{
+			printf("Unable to run mnist test\n");
+		}
+	}
+	// SECTION STOP: MNIST with MSE
 
 	return 0;
 }

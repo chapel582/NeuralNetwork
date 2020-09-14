@@ -1,5 +1,6 @@
 #include "arg_max.h"
 
+#include "int_shuffler.cpp"
 #include "matrix.cpp"
 #include "neural_net_cpu.cpp"
 #include "matrix_test.cpp"
