@@ -129,6 +129,7 @@ void CudaAllocMatrixMeanResult(matrix** Result, matrix* M1)
 inline uint32_t GetNumBlocks(uint32_t Range, uint32_t BlockSize)
 {
 	// TODO: query for max block size?
+	// TODO: don't use this wherever you use __syncthreads
 	return (Range + BlockSize - 1) / BlockSize;
 }
 
@@ -1851,7 +1852,11 @@ void CudaShuffleInts(int_shuffler* IntShuffler, curandState_t* CurandState)
 			curand_uniform(CurandState) * List->Length
 		);
 		int Value;
-		if((RandValue - (int) RandValue) >= 0.5f)
+		if(List->Length == 1)
+		{
+			Value = 0;
+		}
+		else if((RandValue - (int) RandValue) >= 0.5f)
 		{
 			Value = (int) (RandValue + 1.0f);
 		}
@@ -1897,7 +1902,6 @@ void CudaTrainNeuralNetMiniBatchThread(
 {
 	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
 	uint32_t Stride = gridDim.x * blockDim.x;
-	printf("Start? %d\n", Start);
 
 	matrix* MiniBatchData = Trainer->MiniBatchData;
 	matrix* MiniBatchLabels = Trainer->MiniBatchLabels;
@@ -1905,14 +1909,16 @@ void CudaTrainNeuralNetMiniBatchThread(
 	uint32_t MiniBatchSize = MiniBatchData->NumRows;
 
 	curandState_t CurandState;
-	curand_init(0, 0, 1234, &CurandState);
-
+	if(Start == 0)
+	{
+		curand_init(0, 0, 1234, &CurandState);
+	}
+	
 	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
 	{
 		if(Start == 0)
 		{
 			CudaShuffleInts(IntShuffler, &CurandState);
-			printf("Shuffled!\n");	
 		}
 
 		for(
@@ -1954,7 +1960,6 @@ void CudaTrainNeuralNetMiniBatchThread(
 						MiniBatchLabels->NumColumns * sizeof(float)
 					);
 				}
-				printf("Got a new mini batch!\n");
 			}
 			__syncthreads();
 
@@ -1970,6 +1975,7 @@ void CudaTrainNeuralNetMiniBatchThread(
 				false
 			);
 			__syncthreads();
+			printf("Trained on minibatch #%d\n", BatchIndex);
 		}
 
 		matrix* Predictions = NULL;
@@ -1987,7 +1993,8 @@ void CudaTrainNeuralNetMiniBatchThread(
 		float TrainingAccuracy = CudaTopOneAccuracyDevice(
 			FullBatchNnViewer, Inputs, Labels, Start, Stride
 		);
-		if(PrintStatus && Start == 0)
+		// if(PrintStatus && Start == 0)
+		if(Start == 0)
 		{
 			printf(
 				"Epoch %d Loss, Accuracy: %f, %f\n",
@@ -2031,8 +2038,8 @@ void CudaTrainNeuralNetMiniBatch(
 	int_shuffler* IntShuffler;
 	CudaMakeIntShuffler(&IntShuffler, Inputs->NumRows);
 
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	uint32_t BlockSize = 32;
+	uint32_t NumBlocks = 1;
 	CudaTrainNeuralNetMiniBatchThread<<<NumBlocks, BlockSize>>>(
 		Trainer,
 		NeuralNet,
