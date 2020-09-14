@@ -556,8 +556,6 @@ void CudaDenseForward(matrix* Inputs, dense_layer* DenseLayer, matrix* Results)
 		Inputs, DenseLayer, Results
 	);
 	cudaDeviceSynchronize();
-	// CudaMatrixMult(Inputs, &DenseLayer->Weights, Results);
-	// CudaAddVectorToRows(Results, &DenseLayer->Bias, Results);	
 }
 
 void CudaAllocDenseLayerTrain(
@@ -776,19 +774,9 @@ void CudaMeanSquaredForwardThread(
 	);		
 }
 
-float CudaMeanSquaredForward(
-	mse_layer* Layer, matrix* Predictions, matrix* Labels
-)
+__device__ 
+float CudaCalculateMse(mse_layer* Layer, matrix* Predictions)
 {
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize);
-	assert((NumBlocks * BlockSize) < Layer->MaxThreads);
-	memset(Layer->SquaredErrorResults, 0, Layer->MaxThreads * sizeof(float));
-	CudaMeanSquaredForwardThread<<<NumBlocks, BlockSize>>>(
-		Layer->SquaredErrorResults, Predictions, Labels
-	);
-	cudaDeviceSynchronize();
-		
 	int NumThreadsRan; 
 	if(Layer->MaxThreads < Predictions->NumRows)
 	{
@@ -814,6 +802,51 @@ float CudaMeanSquaredForward(
 	// CONT: out a two in the back derivation 
 	float Mean = Sum / (2 * Predictions->NumRows);
 	return Mean;
+}
+
+float CalculateMse(mse_layer* Layer, matrix* Predictions)
+{
+	int NumThreadsRan; 
+	if(Layer->MaxThreads < Predictions->NumRows)
+	{
+		NumThreadsRan = Layer->MaxThreads;
+	}
+	else
+	{
+		NumThreadsRan = Predictions->NumRows;
+	}
+
+	float Sum = 0;
+	for(
+		uint32_t ThreadIndex = 0;
+		ThreadIndex < NumThreadsRan;
+		ThreadIndex++
+	)
+	{
+		float* SquaredError = Layer->SquaredErrorResults + ThreadIndex;
+		Sum += *SquaredError;
+	}
+
+	// NOTE: this definition of MSE with a two in the denominator helps cancel 
+	// CONT: out a two in the back derivation 
+	float Mean = Sum / (2 * Predictions->NumRows);
+	return Mean;
+}
+
+float CudaMeanSquaredForward(
+	mse_layer* Layer, matrix* Predictions, matrix* Labels
+)
+{
+	int BlockSize = 256;
+	int NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize);
+	assert((NumBlocks * BlockSize) < Layer->MaxThreads);
+	memset(Layer->SquaredErrorResults, 0, Layer->MaxThreads * sizeof(float));
+	CudaMeanSquaredForwardThread<<<NumBlocks, BlockSize>>>(
+		Layer->SquaredErrorResults, Predictions, Labels
+	);
+	cudaDeviceSynchronize();
+
+	return CalculateMse(Layer, Predictions);
 }
 
 void CudaAllocMseTrainData(
@@ -1007,20 +1040,17 @@ void CudaResizedNeuralNet(
 	}
 }
 
-void CudaNeuralNetForward(
+__device__
+void CudaNeuralNetForwardCore(
 	neural_net* NeuralNet,
 	matrix* Inputs,
 	matrix* Labels,
 	matrix** Predictions,
-	float* LossResult
+	int Start,
+	int Stride
 )
 {
-	if(Predictions)
-	{
-		*Predictions = NULL;
-	}
 	matrix* Outputs = NULL;
-	float Loss = -1.0f;
 	layer_link* LayerLink = NeuralNet->FirstLink;
 	for(
 		uint32_t LayerIndex = 0;
@@ -1033,21 +1063,23 @@ void CudaNeuralNetForward(
 		{
 			case(LayerType_Dense):
 			{
-				CudaDenseForward(
+				CudaDenseForwardCore(
 					Inputs,
 					(dense_layer*) LayerLink->Data,
-					Outputs
+					Outputs,
+					Start,
+					Stride
 				);
 				break;
 			}
 			case(LayerType_Relu):
 			{
-				CudaReluForward(Inputs, Outputs);
+				CudaReluForwardCore(Inputs, Outputs, Start, Stride);
 				break;
 			}
 			case(LayerType_Softmax):
 			{
-				assert(false);
+				// TODO: not implemented
 				break;
 			}
 
@@ -1056,7 +1088,7 @@ void CudaNeuralNetForward(
 			// CONT: will be updated to NULL
 			case(LayerType_CrossEntropy):
 			{
-				assert(false);
+				// TODO: not implemented
 				break;
 			}
 			case(LayerType_Mse):
@@ -1067,8 +1099,13 @@ void CudaNeuralNetForward(
 				}
 				if(Labels != NULL)
 				{
-					Loss = CudaMeanSquaredForward(
-						(mse_layer*) LayerLink->Data, Inputs, Labels
+					mse_layer* MseLayer = (mse_layer*) LayerLink->Data;
+					CudaMeanSquaredForwardCore(
+						MseLayer->SquaredErrorResults,
+						Inputs,
+						Labels,
+						Start,
+						Stride
 					);
 				}
 				break;
@@ -1083,15 +1120,76 @@ void CudaNeuralNetForward(
 		LayerLink = LayerLink->Next;
 	}
 
-	if(LossResult)
-	{
-		*LossResult = Loss;
-	}
 	if(Predictions != NULL && *Predictions == NULL)
 	{
 		// NOTE: if we didn't have a loss function, this is where we get the
 		// CONT: predictions from
 		*Predictions = Outputs;
+	}
+}
+
+__global__
+void CudaNeuralNetForwardThread(
+	neural_net* NeuralNet,
+	matrix* Inputs,
+	matrix* Labels,
+	matrix** Predictions
+)
+{
+	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	int Stride = blockDim.x * gridDim.x;
+
+	CudaNeuralNetForwardCore(
+		NeuralNet,
+		Inputs,
+		Labels,
+		Predictions,
+		Start,
+		Stride
+	);
+}
+
+void CudaNeuralNetForward(
+	neural_net* NeuralNet,
+	matrix* Inputs,
+	matrix* Labels,
+	matrix** Predictions,
+	float* LossResult
+)
+{
+	if(Predictions)
+	{
+		*Predictions = NULL;
+	}
+
+	int BlockSize = 256;
+	int NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+
+	CudaNeuralNetForwardThread<<<NumBlocks, BlockSize>>>(
+		NeuralNet,
+		Inputs,
+		Labels,
+		Predictions
+	);
+	cudaDeviceSynchronize();
+
+	if(LossResult)
+	{
+		layer_link* LayerLink = NeuralNet->LastLink;
+		switch(LayerLink->Type)
+		{
+			case(LayerType_Mse):
+			{
+				mse_layer* MseLayer = (mse_layer*) LayerLink->Data;
+				*LossResult = CalculateMse(MseLayer, *Predictions);
+				break;
+			}
+			default:
+			{
+				assert(false);
+				break;
+			}
+		}
 	}
 }
 
@@ -1980,51 +2078,54 @@ int main(int argc, char* argv[])
 	}
 	// SECTION STOP: MSE Test
 
-	// // TODO: maybe add another MSE test with non-zero resulting loss and 
-	// // CONT: layer gradient
+	// TODO: maybe add another MSE test with non-zero resulting loss and 
+	// CONT: layer gradient
 
-	// // SECTION START: Linear NN test
-	// {
-	// 	uint32_t BatchSize = 10;
-	// 	uint32_t InputDim = 1;
+	// SECTION START: Linear NN test
+	{
+		uint32_t BatchSize = 10;
+		uint32_t InputDim = 1;
 
-	// 	matrix* Inputs;
-	// 	CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-	// 	FillMatrixConsecutive(Inputs);
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
 
-	// 	neural_net* NeuralNet = NULL;
-	// 	CudaAllocNeuralNet(
-	// 		&NeuralNet, BatchSize, InputDim
-	// 	);
-	// 	CudaAddDense(NeuralNet, 1);
-	// 	CudaAddDense(NeuralNet, 1);
-	// 	dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-	// 	SetMatrixElement(&DenseLayer->Weights, 0, 0, 2);
-	// 	SetMatrixElement(&DenseLayer->Bias, 0, 0, 1);
-	// 	DenseLayer = (dense_layer*) NeuralNet->LastLink->Data;
-	// 	SetMatrixElement(&DenseLayer->Weights, 0, 0, 3);
-	// 	SetMatrixElement(&DenseLayer->Bias, 0, 0, 1);
-	// 	// NOTE: should be equivalent to 6x + 4
+		neural_net* NeuralNet = NULL;
+		CudaAllocNeuralNet(
+			&NeuralNet, BatchSize, InputDim
+		);
+		CudaAddDense(NeuralNet, 1);
+		CudaAddDense(NeuralNet, 1);
+		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
+		SetMatrixElement(&DenseLayer->Weights, 0, 0, 2);
+		SetMatrixElement(&DenseLayer->Bias, 0, 0, 1);
+		DenseLayer = (dense_layer*) NeuralNet->LastLink->Data;
+		SetMatrixElement(&DenseLayer->Weights, 0, 0, 3);
+		SetMatrixElement(&DenseLayer->Bias, 0, 0, 1);
+		// NOTE: should be equivalent to 6x + 4
 
-	// 	matrix* Predictions = NULL;
-	// 	CudaNeuralNetForward(
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		NULL,
-	// 		&Predictions,
-	// 		NULL
-	// 	);
+		matrix** Predictions;
+		cudaMallocManaged(&Predictions, sizeof(matrix*));
+		
+		CudaNeuralNetForward(
+			NeuralNet,
+			Inputs,
+			NULL,
+			Predictions,
+			NULL
+		);
 
-	// 	TestMatrixResult(
-	// 		Predictions,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaLinearForwardNN",
-	// 		EndianString
-	// 	);
-	// }
-	// // SECTION STOP: Linear NN test
+		PrintMatrix(*Predictions);
+		TestMatrixResult(
+			*Predictions,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaLinearForwardNN",
+			EndianString
+		);
+	}
+	// SECTION STOP: Linear NN test
 
 	// // SECTION START: Dim loss NN test
 	// {
