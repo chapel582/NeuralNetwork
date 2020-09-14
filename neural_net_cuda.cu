@@ -114,7 +114,7 @@ void CudaAllocMatrixMeanResult(matrix** Result, matrix* M1)
 // 	free(Matrix);
 // }
 
-inline int GetNumBlocks(int Range, int BlockSize)
+inline uint32_t GetNumBlocks(uint32_t Range, uint32_t BlockSize)
 {
 	// TODO: query for max block size?
 	return (Range + BlockSize - 1) / BlockSize;
@@ -128,7 +128,7 @@ int CudaGetNumBlocks(int Range, int BlockSize)
 
 __device__
 void CudaMatrixMultCore(
-	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
 	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
@@ -153,9 +153,9 @@ void CudaMatrixMultThread(matrix* M1, matrix* M2, matrix* Result)
 {	
 	// NOTE: this basically indexes by the thread index, but b/c the thread 
 	// CONT: index is reset on every block, 
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
 	// NOTE: this basically calculates the # of threads
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Stride = blockDim.x * gridDim.x;
 
 	CudaMatrixMultCore(M1, M2, Result, Start, Stride);
 }
@@ -176,7 +176,7 @@ void CudaMatrixMult(matrix* M1, matrix* M2, matrix* Result)
 
 __device__
 void CudaAddVectorToRowsCore(
-	matrix* M1, matrix* Vector, matrix* Result, int Start, int Stride
+	matrix* M1, matrix* Vector, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
 	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
@@ -209,9 +209,9 @@ void CudaAddVectorToRowsThread(matrix* M1, matrix* Vector, matrix* Result)
 
 	// NOTE: this basically indexes by the thread index, but b/c the thread 
 	// CONT: index is reset on every block, 
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
 	// NOTE: this basically calculates the # of threads
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Stride = blockDim.x * gridDim.x;
 
 	CudaAddVectorToRowsCore(M1, Vector, Result, Start, Stride);
 }
@@ -229,15 +229,15 @@ void CudaAddVectorToRows(matrix* M1, matrix* Vector, matrix* Result)
 
 	// NOTE: not sure if this should be a variable or queried or tracked with 
 	// CONT: a data structure
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
 	CudaAddVectorToRowsThread<<<NumBlocks, BlockSize>>>(M1, Vector, Result);
 	cudaDeviceSynchronize();
 }
 
 __device__
 void CudaMatrixAddCore(
-	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
 	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
@@ -260,9 +260,9 @@ void CudaMatrixAddThread(matrix* M1, matrix* M2, matrix* Result)
 {
 	// NOTE: this basically indexes by the thread index, but b/c the thread 
 	// CONT: index is reset on every block, 
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
 	// NOTE: this basically calculates the # of threads
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Stride = blockDim.x * gridDim.x;
 
 	CudaMatrixAddCore(M1, M2, Result, Start, Stride);
 }
@@ -274,15 +274,15 @@ void CudaMatrixAdd(matrix* M1, matrix* M2, matrix* Result)
 	
 	// NOTE: not sure if this should be a variable or queried or tracked with 
 	// CONT: a data structure
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
 	CudaMatrixAddThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
 }
 
 __device__
 void CudaMatrixMultM1TransposeCore(
-	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
 	for(uint32_t Row = Start; Row < M1->NumColumns; Row += Stride)
@@ -305,8 +305,8 @@ void CudaMatrixMultM1TransposeCore(
 __global__
 void CudaMatrixMultM1TransposeThread(matrix* M1, matrix* M2, matrix* Result)
 {
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Stride = blockDim.x * gridDim.x;
 	
 	CudaMatrixMultM1TransposeCore(M1, M2, Result, Start, Stride);
 }
@@ -319,15 +319,15 @@ void CudaMatrixMultM1Transpose(matrix* M1, matrix* M2, matrix* Result)
 
 	assert(M1->NumRows == M2->NumRows);
 
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(M1->NumColumns, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(M1->NumColumns, BlockSize);
 	CudaMatrixMultM1TransposeThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
 }
 
 __device__
 void CudaMatrixMultM2TransposeCore(
-	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
 	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
@@ -352,9 +352,9 @@ void CudaMatrixMultM2TransposeThread(matrix* M1, matrix* M2, matrix* Result)
 {
 	// NOTE: this basically indexes by the thread index, but b/c the thread 
 	// CONT: index is reset on every block, 
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
 	// NOTE: this basically calculates the # of threads
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Stride = blockDim.x * gridDim.x;
 
 	CudaMatrixMultM2TransposeCore(M1, M2, Result, Start, Stride);
 }
@@ -367,15 +367,15 @@ void CudaMatrixMultM2Transpose(matrix* M1, matrix* M2, matrix* Result)
 
 	assert(M1->NumColumns == M2->NumColumns);
 
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
 	CudaMatrixMultM2TransposeThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
 }
 
 __device__
 void CudaMatrixMultM1M2TransposeCore(
-	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
 	for(uint32_t Row = Start; Row < M1->NumColumns; Row += Stride)
@@ -400,9 +400,9 @@ void CudaMatrixMultM1M2TransposeThread(matrix* M1, matrix* M2, matrix* Result)
 {
 	// NOTE: this basically indexes by the thread index, but b/c the thread 
 	// CONT: index is reset on every block, 
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
 	// NOTE: this basically calculates the # of threads
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Stride = blockDim.x * gridDim.x;
 
 	CudaMatrixMultM1M2TransposeCore(M1, M2, Result, Start, Stride);
 }
@@ -413,15 +413,15 @@ void CudaMatrixMultM1M2Transpose(matrix* M1, matrix* M2, matrix* Result)
 	// CONT: a new matrix
 	assert(M1->NumRows == M2->NumColumns);
 
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(M1->NumColumns, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(M1->NumColumns, BlockSize);
 	CudaMatrixMultM1M2TransposeThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
 }
 
 __device__
 void CudaMatrixScalarMultCore(
-	float Scalar, matrix* M1, matrix* Result, int Start, int Stride
+	float Scalar, matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
 	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
@@ -439,24 +439,24 @@ void CudaMatrixScalarMultThread(float Scalar, matrix* M1, matrix* Result)
 {
 	// NOTE: this basically indexes by the thread index, but b/c the thread 
 	// CONT: index is reset on every block, 
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
 	// NOTE: this basically calculates the # of threads
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Stride = blockDim.x * gridDim.x;
 
 	CudaMatrixScalarMultCore(Scalar, M1, Result, Start, Stride);
 }
 
 void CudaMatrixScalarMult(float Scalar, matrix* M1, matrix* Result)
 {
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
 	CudaMatrixScalarMultThread<<<NumBlocks, BlockSize>>>(Scalar, M1, Result);
 	cudaDeviceSynchronize();
 }
 
 __device__
 void CudaMatrixSubtractCore(
-	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
 	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
@@ -479,9 +479,9 @@ void CudaMatrixSubtractThread(matrix* M1, matrix* M2, matrix* Result)
 {
 	// NOTE: this basically indexes by the thread index, but b/c the thread 
 	// CONT: index is reset on every block, 
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
 	// NOTE: this basically calculates the # of threads
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Stride = blockDim.x * gridDim.x;
 
 	CudaMatrixSubtractCore(M1, M2, Result, Start, Stride);
 }
@@ -491,16 +491,16 @@ void CudaMatrixSubtract(matrix* M1, matrix* M2, matrix* Result)
 	assert(M1->NumRows == M2->NumRows);
 	assert(M1->NumColumns == M2->NumColumns);
 
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
 
-	CudaMatrixSubtractThread<<<BlockSize, NumBlocks>>>(M1, M2, Result);
+	CudaMatrixSubtractThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
 }
 
 __device__
 void CudaMatrixScalarMultCoreColStride(
-	float Scalar, matrix* M1, matrix* Result, int Start, int Stride
+	float Scalar, matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
 	// NOTE: the number of columns in M1 should equal the number of rows in M2
@@ -516,7 +516,9 @@ void CudaMatrixScalarMultCoreColStride(
 }
 
 __device__
-void CudaMatrixMeanCore(matrix* M1, matrix* Result, int Start, int Stride)
+void CudaMatrixMeanCore(
+	matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
+)
 {
 	CudaMatrixScalarMultCoreColStride(0.0f, Result, Result, Start, Stride);
 	for(uint32_t Row = 0; Row < M1->NumRows; Row++)
@@ -540,9 +542,9 @@ void CudaMatrixMeanThread(matrix* M1, matrix* Result)
 {
 	// NOTE: this basically indexes by the thread index, but b/c the thread 
 	// CONT: index is reset on every block, 
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
 	// NOTE: this basically calculates the # of threads
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Stride = blockDim.x * gridDim.x;
 
 	CudaMatrixMeanCore(M1, Result, Start, Stride);
 }
@@ -556,8 +558,8 @@ void CudaMatrixMean(matrix* M1, matrix* Result)
 	M1 Dimensions: N x M
 	Result Dimensions: 1 x M
 	*/
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(M1->NumColumns, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(M1->NumColumns, BlockSize);
 	CudaMatrixMeanThread<<<NumBlocks, BlockSize>>>(M1, Result);
 	cudaDeviceSynchronize();
 }
@@ -578,8 +580,8 @@ void CudaDenseForwardCore(
 	matrix* Inputs,
 	dense_layer* DenseLayer,
 	matrix* Results,
-	int Start,
-	int Stride
+	uint32_t Start,
+	uint32_t Stride
 )
 {
 	CudaMatrixMultCore(Inputs, &DenseLayer->Weights, Results, Start, Stride);
@@ -593,16 +595,16 @@ void CudaDenseForwardThread(
 	matrix* Inputs, dense_layer* DenseLayer, matrix* Results
 )
 {
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Stride = blockDim.x * gridDim.x;
 
 	CudaDenseForwardCore(Inputs, DenseLayer, Results, Start, Stride);
 }
 
 void CudaDenseForward(matrix* Inputs, dense_layer* DenseLayer, matrix* Results)
 {
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(DenseLayer->Weights.NumRows, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(DenseLayer->Weights.NumRows, BlockSize);
 	CudaDenseForwardThread<<<NumBlocks, BlockSize>>>(
 		Inputs, DenseLayer, Results
 	);
@@ -641,8 +643,8 @@ void CudaDenseBackCore(
 	matrix* NextLayerGradient,
 	dense_layer* DenseLayer,
 	dense_layer_train_data* TrainData,
-	int Start,
-	int Stride
+	uint32_t Start,
+	uint32_t Stride
 )
 {
 	CudaMatrixMultM2TransposeCore(
@@ -707,8 +709,8 @@ void CudaDenseBackThread(
 	dense_layer_train_data* TrainData
 )
 {
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;
-	int Stride = gridDim.x * blockDim.x;
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
+	uint32_t Stride = gridDim.x * blockDim.x;
 
 	CudaDenseBackCore(
 		Inputs, NextLayerGradient, DenseLayer, TrainData, Start, Stride
@@ -722,7 +724,15 @@ void CudaDenseBack(
 	dense_layer_train_data* TrainData
 )
 {
-
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	CudaDenseBackThread<<<NumBlocks, BlockSize>>>(
+		Inputs,
+		NextLayerGradient,
+		DenseLayer,
+		TrainData
+	);
+	cudaDeviceSynchronize();
 }
 
 void CudaAllocReluTrain(
@@ -743,7 +753,9 @@ void CudaAllocReluTrain(
 // }
 
 __device__
-void CudaReluForwardCore(matrix* M1, matrix* Result, int Start, int Stride)
+void CudaReluForwardCore(
+	matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
+)
 {
 	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
 	{
@@ -767,8 +779,8 @@ void CudaReluForwardCore(matrix* M1, matrix* Result, int Start, int Stride)
 __global__
 void CudaReluForwardThread(matrix* Inputs, matrix* Outputs)
 {
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Stride = blockDim.x * gridDim.x;
 
 	CudaReluForwardCore(Inputs, Outputs, Start, Stride);
 }
@@ -778,8 +790,8 @@ void CudaReluForward(matrix* Inputs, matrix* Outputs)
 	assert(Inputs->NumRows == Outputs->NumRows);
 	assert(Inputs->NumColumns == Outputs->NumColumns);
 
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
 	CudaReluForwardThread<<<NumBlocks, BlockSize>>>(Inputs, Outputs);
 	cudaDeviceSynchronize();
 }
@@ -834,8 +846,8 @@ void CudaReluBack(
 	matrix* Inputs, matrix* NextLayerGradient, relu_train_data* TrainData
 )
 {
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
 	CudaReluBackThread<<<NumBlocks, BlockSize>>>(
 		Inputs, NextLayerGradient, &TrainData->LayerGradient
 	);
@@ -862,8 +874,8 @@ void CudaMeanSquaredForwardCore(
 	float* SquaredErrorResults,
 	matrix* Predictions,
 	matrix* Labels,
-	int Start,
-	int Stride
+	uint32_t Start,
+	uint32_t Stride
 )
 {
 	float Result = 0.0f;
@@ -887,8 +899,8 @@ void CudaMeanSquaredForwardThread(
 	float* SquaredErrorResults, matrix* Predictions, matrix* Labels
 )
 {
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;
-	int Stride = gridDim.x * blockDim.x;
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
+	uint32_t Stride = gridDim.x * blockDim.x;
 
 	CudaMeanSquaredForwardCore(
 		SquaredErrorResults, Predictions, Labels, Start, Stride
@@ -958,8 +970,8 @@ float CudaMeanSquaredForward(
 	mse_layer* Layer, matrix* Predictions, matrix* Labels
 )
 {
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize);
 	assert((NumBlocks * BlockSize) < Layer->MaxThreads);
 	memset(Layer->SquaredErrorResults, 0, Layer->MaxThreads * sizeof(float));
 	CudaMeanSquaredForwardThread<<<NumBlocks, BlockSize>>>(
@@ -992,8 +1004,8 @@ void CudaMseBackCore(
 	matrix* Predictions,
 	matrix* Labels,
 	mse_train_data* TrainData,
-	int Start,
-	int Stride
+	uint32_t Start,
+	uint32_t Stride
 )
 {
 	CudaMatrixSubtractCore(
@@ -1013,8 +1025,8 @@ void CudaMseBackThread(
 	matrix* Predictions, matrix* Labels, mse_train_data* TrainData
 )
 {
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
+	uint32_t Stride = blockDim.x * gridDim.x;
 
 	CudaMseBackCore(Predictions, Labels, TrainData, Start, Stride);
 }
@@ -1023,8 +1035,8 @@ void CudaMeanSquaredBack(
 	matrix* Predictions, matrix* Labels, mse_train_data* TrainData
 )
 {
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize);
 	CudaMseBackThread<<<NumBlocks, BlockSize>>>(Predictions, Labels, TrainData);
 	cudaDeviceSynchronize();
 }
@@ -1195,8 +1207,8 @@ void CudaNeuralNetForwardCore(
 	matrix* Inputs,
 	matrix* Labels,
 	matrix** Predictions,
-	int Start,
-	int Stride
+	uint32_t Start,
+	uint32_t Stride
 )
 {
 	matrix* Outputs = NULL;
@@ -1285,8 +1297,8 @@ void CudaNeuralNetForwardThread(
 	matrix** Predictions
 )
 {
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;  
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Stride = blockDim.x * gridDim.x;
 
 	CudaNeuralNetForwardCore(
 		NeuralNet,
@@ -1313,8 +1325,8 @@ void CudaNeuralNetForward(
 		*Predictions = NULL;
 	}
 
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	uint32_t BlockSize = 256;
+	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
 
 	CudaNeuralNetForwardThread<<<NumBlocks, BlockSize>>>(
 		NeuralNet,
@@ -1480,8 +1492,8 @@ void CudaTrainNeuralNetCore(
 	matrix* Inputs,
 	matrix* Labels,
 	uint32_t Epochs,
-	int Start,
-	int Stride
+	uint32_t Start,
+	uint32_t Stride
 )
 {
 	bool PrintStatus = false;
@@ -1635,8 +1647,8 @@ void CudaTrainNeuralNetThread(
 	uint32_t Epochs
 )
 {
-	int Start = blockIdx.x * blockDim.x + threadIdx.x;
-	int Stride = blockDim.x * gridDim.x;
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
+	uint32_t Stride = blockDim.x * gridDim.x;
 	CudaTrainNeuralNetCore(
 		Trainer,
 		NeuralNet,
@@ -1663,9 +1675,17 @@ void CudaTrainNeuralNet(
 		InitDenseLayers(NeuralNet);
 	}
 
-	// TODO: get maximum number of threads we'll EVER need instead of just setting it by batch size
+	// TODO: get maximum number of threads we'll need across all layers instead of just setting it by batch size
 	int BlockSize = 256;
 	int NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	CudaTrainNeuralNetThread<<<NumBlocks, BlockSize>>>(
+		Trainer,
+		NeuralNet,
+		Inputs,
+		Labels,
+		Epochs
+	);
+	cudaDeviceSynchronize();
 }
 
 float CudaTopOneAccuracy(neural_net* NeuralNet, matrix* Inputs, matrix* Labels)
@@ -2508,23 +2528,24 @@ int main(int argc, char* argv[])
 			100
 		);
 
-		// dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-		// TestMatrixResult(
-		// 	&DenseLayer->Weights,
-		// 	FilePathBuffer, 
-		// 	sizeof(FilePathBuffer),
-		// 	TestDataDirectory,
-		// 	"CudaOneNeuronNN_Weights",
-		// 	EndianString
-		// );
-		// TestMatrixResult(
-		// 	&DenseLayer->Bias,
-		// 	FilePathBuffer, 
-		// 	sizeof(FilePathBuffer),
-		// 	TestDataDirectory,
-		// 	"CudaOneNeuronNN_Bias",
-		// 	EndianString
-		// );
+		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
+
+		TestMatrixResult(
+			&DenseLayer->Weights,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaOneNeuronNN_Weights",
+			EndianString
+		);
+		TestMatrixResult(
+			&DenseLayer->Bias,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaOneNeuronNN_Bias",
+			EndianString
+		);
 	}
 	// SECTION STOP: One neuron training
 
