@@ -51,6 +51,9 @@ inline void SetMatrixElement(
 	*Element = Value;
 }
 
+bool MatricesAreEquivalent(matrix* M1, matrix* M2);
+void SaveMatrix(matrix* Matrix, char* FilePath);
+bool LoadMatrix(matrix* Matrix, char* FilePath);
 #define MATRIX_H
 
 #endif

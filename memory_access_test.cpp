@@ -1,3 +1,4 @@
+// TODO: remove this code
 /*
 NOTE: 
 this file is a speed test to compare allocation and access times for 

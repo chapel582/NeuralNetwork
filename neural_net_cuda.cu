@@ -5,11 +5,6 @@
 #include "neural_net.h"
 #include "matrix.h"
 
-#include "neural_net.cpp"
-#include "matrix.cpp"
-#include "mnist_test.cpp"
-#include "matrix_test.cpp"
-
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -56,11 +51,22 @@ void CudaInitMatrix(matrix* Matrix, uint32_t NumRows, uint32_t NumColumns)
 	memset(Matrix->Data, 0, GetMatrixDataSize(Matrix));
 }
 
+void CudaFreeMatrixData(matrix* Matrix)
+{
+	cudaFree(Matrix->Data);
+}
+
 void CudaAllocMatrix(matrix** Result, uint32_t NumRows, uint32_t NumColumns)
 {
 	cudaMallocManaged(Result, sizeof(matrix));
 	matrix* Matrix = *Result;
 	CudaInitMatrix(Matrix, NumRows, NumColumns);
+}
+
+void CudaFreeMatrix(matrix* Matrix)
+{
+	CudaFreeMatrixData(Matrix);
+	cudaFree(Matrix);
 }
 
 void CudaAllocMultResultMatrix(matrix** Result, matrix* M1, matrix* M2)
@@ -114,17 +120,48 @@ void CudaAllocMatrixMeanResult(matrix** Result, matrix* M1)
 // 	free(Matrix);
 // }
 
-inline uint32_t GetNumBlocks(uint32_t Range, uint32_t BlockSize)
+#define MAX_GPUS 1
+int GlobalMaxBlockSizeArray[MAX_GPUS];
+int GlobalMaxGridDimArray[MAX_GPUS];
+
+void CudaInitDeviceProperties(uint32_t Device)
 {
-	// TODO: query for max block size?
-	return (Range + BlockSize - 1) / BlockSize;
+	assert(Device < MAX_GPUS);
+	cudaDeviceGetAttribute(
+		&GlobalMaxBlockSizeArray[Device], cudaDevAttrMaxBlockDimX, Device
+	);
+	cudaDeviceGetAttribute(
+		&GlobalMaxGridDimArray[Device], cudaDevAttrMaxGridDimX, Device
+	);
 }
 
-__device__
-int CudaGetNumBlocks(int Range, int BlockSize)
+inline uint32_t GetBlockSize(uint32_t Device)
 {
-	return (Range + BlockSize - 1) / BlockSize;
+	return GlobalMaxBlockSizeArray[Device];
 }
+
+uint32_t GetNumBlocks(uint32_t Range, uint32_t BlockSize, uint32_t Device)
+{
+	// NOTE: for getting max blocks for operations that are parallelizable 
+	// CONT: without no sync
+
+	// NOTE: NumBlocks is always at least one, and grows as the data to 
+	// CONT: process grows
+	
+	uint32_t NumBlocks = (Range + BlockSize - 1) / BlockSize;
+	int MaxBlocks = GlobalMaxGridDimArray[Device];
+	if(MaxBlocks < NumBlocks)
+	{
+		MaxBlocks = NumBlocks;
+	}
+	return NumBlocks;
+}
+
+// __device__
+// int CudaGetNumBlocks(int Range, int BlockSize)
+// {
+// 	return (Range + BlockSize - 1) / BlockSize;
+// }
 
 __device__
 void CudaMatrixMultCore(
@@ -163,13 +200,9 @@ void CudaMatrixMultThread(matrix* M1, matrix* M2, matrix* Result)
 void CudaMatrixMult(matrix* M1, matrix* M2, matrix* Result)
 {
 	assert(M1->NumColumns == M2->NumRows);
-	// NOTE: not sure if this should be a variable or queried or tracked with 
-	// CONT: a data structure
-	int BlockSize = 256;
-
-	// NOTE: NumBlocks is always at least one, and grows as the data to 
-	// NOTE: process grows
-	int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
+	uint32_t Device = 0;
+	int BlockSize = GetBlockSize(Device);
+	int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, Device);
 	CudaMatrixMultThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
 }
@@ -229,8 +262,9 @@ void CudaAddVectorToRows(matrix* M1, matrix* Vector, matrix* Result)
 
 	// NOTE: not sure if this should be a variable or queried or tracked with 
 	// CONT: a data structure
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, Device);
 	CudaAddVectorToRowsThread<<<NumBlocks, BlockSize>>>(M1, Vector, Result);
 	cudaDeviceSynchronize();
 }
@@ -274,8 +308,9 @@ void CudaMatrixAdd(matrix* M1, matrix* M2, matrix* Result)
 	
 	// NOTE: not sure if this should be a variable or queried or tracked with 
 	// CONT: a data structure
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, Device);
 	CudaMatrixAddThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
 }
@@ -319,8 +354,9 @@ void CudaMatrixMultM1Transpose(matrix* M1, matrix* M2, matrix* Result)
 
 	assert(M1->NumRows == M2->NumRows);
 
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(M1->NumColumns, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(M1->NumColumns, BlockSize, Device);
 	CudaMatrixMultM1TransposeThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
 }
@@ -367,8 +403,9 @@ void CudaMatrixMultM2Transpose(matrix* M1, matrix* M2, matrix* Result)
 
 	assert(M1->NumColumns == M2->NumColumns);
 
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, Device);
 	CudaMatrixMultM2TransposeThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
 }
@@ -413,8 +450,9 @@ void CudaMatrixMultM1M2Transpose(matrix* M1, matrix* M2, matrix* Result)
 	// CONT: a new matrix
 	assert(M1->NumRows == M2->NumColumns);
 
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(M1->NumColumns, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(M1->NumColumns, BlockSize, Device);
 	CudaMatrixMultM1M2TransposeThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
 }
@@ -448,8 +486,9 @@ void CudaMatrixScalarMultThread(float Scalar, matrix* M1, matrix* Result)
 
 void CudaMatrixScalarMult(float Scalar, matrix* M1, matrix* Result)
 {
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, Device);
 	CudaMatrixScalarMultThread<<<NumBlocks, BlockSize>>>(Scalar, M1, Result);
 	cudaDeviceSynchronize();
 }
@@ -491,8 +530,9 @@ void CudaMatrixSubtract(matrix* M1, matrix* M2, matrix* Result)
 	assert(M1->NumRows == M2->NumRows);
 	assert(M1->NumColumns == M2->NumColumns);
 
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, BlockSize);
 
 	CudaMatrixSubtractThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
@@ -558,8 +598,9 @@ void CudaMatrixMean(matrix* M1, matrix* Result)
 	M1 Dimensions: N x M
 	Result Dimensions: 1 x M
 	*/
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(M1->NumColumns, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(M1->NumColumns, BlockSize, Device);
 	CudaMatrixMeanThread<<<NumBlocks, BlockSize>>>(M1, Result);
 	cudaDeviceSynchronize();
 }
@@ -603,8 +644,11 @@ void CudaDenseForwardThread(
 
 void CudaDenseForward(matrix* Inputs, dense_layer* DenseLayer, matrix* Results)
 {
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(DenseLayer->Weights.NumRows, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(
+		DenseLayer->Weights.NumRows, BlockSize, Device
+	);
 	CudaDenseForwardThread<<<NumBlocks, BlockSize>>>(
 		Inputs, DenseLayer, Results
 	);
@@ -724,8 +768,9 @@ void CudaDenseBack(
 	dense_layer_train_data* TrainData
 )
 {
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize, Device);
 	CudaDenseBackThread<<<NumBlocks, BlockSize>>>(
 		Inputs,
 		NextLayerGradient,
@@ -790,8 +835,9 @@ void CudaReluForward(matrix* Inputs, matrix* Outputs)
 	assert(Inputs->NumRows == Outputs->NumRows);
 	assert(Inputs->NumColumns == Outputs->NumColumns);
 
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize, Device);
 	CudaReluForwardThread<<<NumBlocks, BlockSize>>>(Inputs, Outputs);
 	cudaDeviceSynchronize();
 }
@@ -846,8 +892,9 @@ void CudaReluBack(
 	matrix* Inputs, matrix* NextLayerGradient, relu_train_data* TrainData
 )
 {
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize, Device);
 	CudaReluBackThread<<<NumBlocks, BlockSize>>>(
 		Inputs, NextLayerGradient, &TrainData->LayerGradient
 	);
@@ -970,8 +1017,9 @@ float CudaMeanSquaredForward(
 	mse_layer* Layer, matrix* Predictions, matrix* Labels
 )
 {
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize, Device);
 	assert((NumBlocks * BlockSize) < Layer->MaxThreads);
 	memset(Layer->SquaredErrorResults, 0, Layer->MaxThreads * sizeof(float));
 	CudaMeanSquaredForwardThread<<<NumBlocks, BlockSize>>>(
@@ -1035,8 +1083,9 @@ void CudaMeanSquaredBack(
 	matrix* Predictions, matrix* Labels, mse_train_data* TrainData
 )
 {
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize, Device);
 	CudaMseBackThread<<<NumBlocks, BlockSize>>>(Predictions, Labels, TrainData);
 	cudaDeviceSynchronize();
 }
@@ -1325,8 +1374,9 @@ void CudaNeuralNetForward(
 		*Predictions = NULL;
 	}
 
-	uint32_t BlockSize = 256;
-	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize, Device);
 
 	CudaNeuralNetForwardThread<<<NumBlocks, BlockSize>>>(
 		NeuralNet,
@@ -1675,8 +1725,9 @@ void CudaTrainNeuralNet(
 	}
 
 	// TODO: get maximum number of threads we'll need across all layers instead of just setting it by batch size
-	int BlockSize = 256;
-	int NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize);
+	int Device = 0;
+	int BlockSize = GetBlockSize(Device);
+	int NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize, Device);
 	CudaTrainNeuralNetThread<<<NumBlocks, BlockSize>>>(
 		Trainer,
 		NeuralNet,
@@ -1829,1525 +1880,4 @@ void CudaTrainNeuralNetMiniBatch(
 			break;
 		}
 	}
-}
-
-#define SAVE_RESULTS 0
-matrix* TestMatrixResult(
-	matrix* M1,
-	char* FilePathBuffer,
-	size_t FilePathBufferSize,
-	char* TestDataDirectory,
-	const char* TestName,
-	char* EndianString
-)
-{
-	// NOTE: if this function is changed in both test programs 3 more times, 
-	// CONT: it's time to refactor it
-
-	snprintf(
-		FilePathBuffer,
-		FilePathBufferSize,
-		"%s/%s_%s.data",
-		TestDataDirectory,
-		TestName,
-		EndianString
-	);
-#if SAVE_RESULTS
-	SaveMatrix(M1, FilePathBuffer);
-#endif
-
-	matrix* CompareTo;
-	CudaAllocMatrix(&CompareTo, M1->NumRows, M1->NumColumns);
-	bool LoadResult = LoadMatrix(CompareTo, FilePathBuffer);
-	if(!LoadResult)
-	{
-		printf("Could not read %s\n", FilePathBuffer);
-	}
-	else if(!MatricesAreEquivalent(M1, CompareTo))
-	{
-		printf("%s failed\n", TestName);
-		printf("Expected\n");
-		PrintMatrix(CompareTo);
-		printf("Got\n");
-		PrintMatrix(M1);
-	}
-
-	return CompareTo;
-}
-
-void TestFloatResult(
-	float Result,
-	char* FilePathBuffer,
-	size_t FilePathBufferSize,
-	char* TestDataDirectory,
-	const char* TestName,
-	char* EndianString
-)
-{
-	snprintf(
-		FilePathBuffer,
-		FilePathBufferSize,
-		"%s/%s_%s.data",
-		TestDataDirectory,
-		TestName,
-		EndianString
-	);
-	FILE* File;
-#if SAVE_RESULTS
-	fopen_s(&File, FilePathBuffer, "w");
-	fwrite(&Result, 1, sizeof(float), File);
-	fclose(File);
-#endif 
-	float Expected;
-	fopen_s(&File, FilePathBuffer, "r");
-	fread(&Expected, 1, sizeof(float), File);
-	fclose(File);
-
-	if(Expected != Result)
-	{
-		printf("Failure in %s\n", TestName);
-	}
-}
-
-int main(int argc, char* argv[])
-{
-	// TODO: move test code out to other file
-
-	char TestDataDirectory[260];
-	if(argc == 1)
-	{
-		printf("Assuming test data directory path is ../test_data\n");
-		strcpy_s(TestDataDirectory, sizeof(TestDataDirectory), "../test_data");
-	}
-	else if(argc > 1)
-	{
-		strcpy_s(TestDataDirectory, sizeof(TestDataDirectory), argv[1]);
-		printf("TestDataDirectory is %s\n", TestDataDirectory);
-	}
-	else
-	{
-		return -1;
-	}
-
-	bool BigEndian = IsBigEndian();
-	char EndianString[260];
-	if(BigEndian)
-	{
-		strcpy_s(EndianString, sizeof(EndianString), "BigEndian");
-	}
-	else
-	{
-		strcpy_s(EndianString, sizeof(EndianString), "LittleEndian");
-	}
-	char FilePathBuffer[260];
-
-	// SECTION START: Matrix tests
-	{
-		matrix* M1;
-		uint32_t NumRows = 3;
-		uint32_t NumColumns = 3;
-		CudaAllocMatrix(&M1, NumRows, NumColumns);
-		FillMatrixConsecutive(M1);		
-
-		matrix* M2;
-		NumRows = 3;
-		NumColumns = 3;
-		CudaAllocMatrix(&M2, NumRows, NumColumns);
-		FillMatrixConsecutive(M2);
-
-		matrix* MultResult;
-		CudaAllocMultResultMatrix(&MultResult, M1, M2);
-		CudaMatrixMult(M1, M2, MultResult);
-		// NOTE: TestMatrixResult returns a matrix pointer that can be freed
-		TestMatrixResult(
-			MultResult,
-			FilePathBuffer,
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaMultResult",
-			EndianString
-		);
-
-		MatrixClear(MultResult);
-
-		matrix* M3;
-		NumRows = 3;
-		NumColumns = 2;
-		CudaAllocMatrix(&M3, NumRows, NumColumns);
-		FillMatrixConsecutive(M3);
-
-		matrix* M4;
-		NumRows = 2;
-		NumColumns = 3;
-		CudaAllocMatrix(&M4, NumRows, NumColumns);
-		FillMatrixConsecutive(M4);
-
-		matrix* MultResult2;
-		CudaAllocMultResultMatrix(&MultResult2, M3, M4);
-		CudaMatrixMult(M3, M4, MultResult2);
-		TestMatrixResult(
-			MultResult2,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaNonSquareMult",
-			EndianString
-		);
-
-		matrix* AddResult;
-		CudaAllocMatrix(&AddResult, M1->NumRows, M1->NumColumns);
-		CudaMatrixAdd(M1, M2, AddResult);
-		TestMatrixResult(
-			AddResult,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaMatrixAdd",
-			EndianString
-		);
-
-		matrix* AddVectorResult;
-		CudaAllocMatrix(&AddVectorResult, M1->NumRows, M1->NumColumns);
-		matrix* Vector;
-		CudaAllocMatrix(&Vector, 1, M1->NumColumns);
-		FillMatrixConsecutive(Vector);
-		CudaAddVectorToRows(M1, Vector, AddVectorResult);
-		TestMatrixResult(
-			AddVectorResult,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaAddVectorToRows",
-			EndianString
-		);
-
-		matrix* M5;
-		NumRows = 2;
-		NumColumns = 3;
-		CudaAllocMatrix(&M5, NumRows, NumColumns);
-		FillMatrixConsecutive(M5);
-
-		matrix* M6;
-		NumRows = 2;
-		NumColumns = 3;
-		CudaAllocMatrix(&M6, NumRows, NumColumns);
-		FillMatrixConsecutive(M6);
-
-		matrix* M5TMultResult;
-		CudaAllocM1TransposeMultResultMatrix(&M5TMultResult, M5, M6);
-		CudaMatrixMultM1Transpose(M5, M6, M5TMultResult);
-		TestMatrixResult(
-			M5TMultResult,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaMatrixMultM1Transpose",
-			EndianString
-		);
-
-		MatrixClear(M5TMultResult);
-		SetMatrixElement(M6, 0, 1, 7);
-		SetMatrixElement(M6, 1, 2, 13);
-		
-		CudaMatrixMultM1Transpose(M5, M6, M5TMultResult);
-		TestMatrixResult(
-			M5TMultResult,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaNonSymmetricMatrixMultM1Transpose",
-			EndianString
-		);
-
-		matrix* M6TMultResult;
-		CudaAllocM2TransposeMultResultMatrix(&M6TMultResult, M5, M6);
-
-		CudaMatrixMultM2Transpose(M5, M6, M6TMultResult);
-		TestMatrixResult(
-			M6TMultResult,
-			FilePathBuffer,
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaMatrixMultM2Transpose",
-			EndianString
-		);
-
-		matrix* M7;
-		NumRows = 2;
-		NumColumns = 3;
-		CudaAllocMatrix(&M7, NumRows, NumColumns);
-		FillMatrixConsecutive(M7);
-
-		matrix* M8;
-		NumRows = 3;
-		NumColumns = 2;
-		CudaAllocMatrix(&M8, NumRows, NumColumns);
-		FillMatrixConsecutive(M8);
-
-		matrix* M7TM8TMultResult;
-		CudaAllocM1M2TransposeMultResultMatrix(&M7TM8TMultResult, M7, M8);
-		MatrixClear(M7TM8TMultResult);
-		CudaMatrixMultM1M2Transpose(M7, M8, M7TM8TMultResult);
-		TestMatrixResult(
-			M7TM8TMultResult,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaMatrixMultM1M2Transpose",
-			EndianString
-		);
-
-		matrix* M9;
-		NumRows = 3;
-		NumColumns = 4;
-		CudaAllocMatrix(&M9, NumRows, NumColumns);
-		FillMatrixConsecutive(M9);
-		
-		CudaMatrixScalarMult(0.5f, M9, M9);
-		TestMatrixResult(
-			M9,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaMatrixScalarMult",
-			EndianString
-		);
-
-		matrix* M10;
-		NumRows = 4;
-		NumColumns = 4;
-		CudaAllocMatrix(&M10, NumRows, NumColumns);
-		FillMatrixConsecutive(M10);
-
-		matrix* M10Mean;
-		CudaAllocMatrixMeanResult(&M10Mean, M10);
-		MatrixClear(M10Mean);
-		CudaMatrixMean(M10, M10Mean);
-		TestMatrixResult(
-			M10Mean,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaMatrixRowMean",
-			EndianString
-		);
-
-		matrix* M11;
-		NumRows = 3;
-		NumColumns = 4;
-		CudaAllocMatrix(&M11, NumRows, NumColumns);
-		FillMatrixConsecutive(M11);
-
-		matrix* M12;
-		CudaAllocMatrix(&M12, NumRows, NumColumns);
-		FillMatrixConsecutive(M12);
-		SetMatrixElement(M12, 0, 0, -2.0f);
-		matrix* SubResult;
-		CudaAllocMatrix(&SubResult, NumRows, NumColumns);
-		CudaMatrixSubtract(M11, M12, SubResult);
-
-		TestMatrixResult(
-			SubResult,
-			FilePathBuffer,
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaMatrixSub",
-			EndianString
-		);
-		// NOTE: if memory starts getting hefty, free memory here
-	}
-	// SECTION STOP: Matrix tests
-
-	// SECTION START: Dense layer tests
-	{
-		uint32_t BatchSize = 8;
-		uint32_t InputDim = 4;
-		uint32_t OutputDim = 3;
-		matrix* Inputs;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		FillMatrixConsecutive(Inputs);
-
-		matrix* Outputs;
-		CudaAllocMatrix(&Outputs, BatchSize, OutputDim);
-		MatrixClear(Outputs);
-
-		dense_layer* DenseLayer;
-		CudaAllocDenseLayer(&DenseLayer, InputDim, OutputDim);
-		FillMatrixConsecutive(&DenseLayer->Weights);
-		FillMatrixConsecutive(&DenseLayer->Bias);
-		CudaDenseForward(Inputs, DenseLayer, Outputs);
-		TestMatrixResult(
-			Outputs,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaForwardDense",
-			EndianString
-		);
-
-		matrix* NextLayerGradient;
-		CudaAllocMatrix(&NextLayerGradient, BatchSize, OutputDim);
-		FillMatrixConsecutive(NextLayerGradient);
-
-		dense_layer_train_data* TrainData;
-		CudaAllocDenseLayerTrain(&TrainData, DenseLayer, 1.0f, BatchSize);
-		CudaDenseBack(
-			Inputs, NextLayerGradient, DenseLayer, TrainData
-		);
-		TestMatrixResult(
-			&DenseLayer->Weights,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaDenseWeightsAfterUpdate",
-			EndianString
-		);
-		TestMatrixResult(
-			&DenseLayer->Bias,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaDenseBiasAfterUpdate",
-			EndianString
-		);
-		TestMatrixResult(
-			&TrainData->LayerGradient,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaDenseLayerGradient",
-			EndianString
-		);
-	}
-	// SECTION STOP: Dense layer tests
-
-	// SECTION START: RELU tests
-	{
-		uint32_t BatchSize = 8;
-		uint32_t InputDim = 4;
-
-		matrix* Inputs;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		FillMatrixConsecutive(Inputs);
-
-		matrix* Outputs;
-		CudaAllocMatrix(&Outputs, BatchSize, InputDim);
-		CudaReluForward(Inputs, Outputs);
-		TestMatrixResult(
-			Outputs,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaReluForwardPositive",
-			EndianString
-		);
-
-		matrix* NextLayerGradient;
-		CudaAllocMatrix(&NextLayerGradient, BatchSize, InputDim);
-		FillMatrixConsecutive(NextLayerGradient);
-
-		relu_train_data* TrainData;
-		CudaAllocReluTrain(&TrainData, BatchSize, InputDim);
-		CudaReluBack(Inputs, NextLayerGradient, TrainData);
-		TestMatrixResult(
-			&TrainData->LayerGradient,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaReluLayerGradientPositive",
-			EndianString
-		);
-
-		CudaMatrixScalarMult(-1.0f, Inputs, Inputs);
-		CudaReluForward(Inputs, Outputs);
-		TestMatrixResult(
-			Outputs,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaReluForwardNegative",
-			EndianString
-		);
-
-		CudaReluBack(Inputs, NextLayerGradient, TrainData);
-		TestMatrixResult(
-			&TrainData->LayerGradient,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaReluLayerGradientNegative",
-			EndianString
-		);
-	}
-	// SECTION STOP: RELU Tests
-
-	// SECTION START: MSE Test
-	{
-		uint32_t BatchSize = 8;
-		uint32_t NumClasses = 4;
-
-		matrix* Predictions = NULL;
-		CudaAllocMatrix(&Predictions, BatchSize, NumClasses);
-		FillOneHotMatrix(Predictions);
-		
-		matrix* Labels = NULL; 
-		CudaAllocMatrix(&Labels, BatchSize, NumClasses);
-		FillOneHotMatrix(Labels);
-
-		mse_layer* MseLayer = NULL;
-		CudaAllocMeanSquared(&MseLayer, 1 << 14);
-
-		float Loss = CudaMeanSquaredForward(MseLayer, Predictions, Labels);
-		TestFloatResult(
-			Loss,
-			FilePathBuffer,
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaMSELoss",
-			EndianString
-		);
-
-		mse_train_data* TrainData = NULL;
-		CudaAllocMseTrainData(&TrainData, BatchSize, NumClasses);
-		CudaMeanSquaredBack(Predictions, Labels, TrainData);
-		TestMatrixResult(
-			&TrainData->LayerGradient,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaMSEBackOK",
-			EndianString
-		);
-	}
-	// SECTION STOP: MSE Test
-
-	// TODO: maybe add another MSE test with non-zero resulting loss and 
-	// CONT: layer gradient
-
-	// SECTION START: Linear NN test
-	{
-		uint32_t BatchSize = 10;
-		uint32_t InputDim = 1;
-
-		matrix* Inputs;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		FillMatrixConsecutive(Inputs);
-
-		neural_net* NeuralNet = NULL;
-		CudaAllocNeuralNet(
-			&NeuralNet, BatchSize, InputDim
-		);
-		CudaAddDense(NeuralNet, 1);
-		CudaAddDense(NeuralNet, 1);
-		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-		SetMatrixElement(&DenseLayer->Weights, 0, 0, 2);
-		SetMatrixElement(&DenseLayer->Bias, 0, 0, 1);
-		DenseLayer = (dense_layer*) NeuralNet->LastLink->Data;
-		SetMatrixElement(&DenseLayer->Weights, 0, 0, 3);
-		SetMatrixElement(&DenseLayer->Bias, 0, 0, 1);
-		// NOTE: should be equivalent to 6x + 4
-
-		matrix** Predictions;
-		cudaMallocManaged(&Predictions, sizeof(matrix*));
-		
-		CudaNeuralNetForward(
-			NeuralNet,
-			Inputs,
-			NULL,
-			Predictions,
-			NULL
-		);
-
-		TestMatrixResult(
-			*Predictions,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaLinearForwardNN",
-			EndianString
-		);
-	}
-	// SECTION STOP: Linear NN test
-
-	// SECTION START: Dim loss NN test
-	{
-		uint32_t BatchSize = 4;
-		uint32_t InputDim = 4;
-
-		matrix* Inputs;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		FillMatrixConsecutive(Inputs);
-
-		neural_net* NeuralNet = NULL;
-		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-		CudaAddDense(NeuralNet, 2);
-		CudaAddDense(NeuralNet, 1);
-		dense_layer* DenseLayer1 = (dense_layer*) NeuralNet->FirstLink->Data;
-		FillMatrixConsecutive(&DenseLayer1->Weights);
-		FillMatrixConsecutive(&DenseLayer1->Bias);
-		dense_layer* DenseLayer2 = (dense_layer*) NeuralNet->LastLink->Data;
-		FillMatrixConsecutive(&DenseLayer2->Weights);
-		FillMatrixConsecutive(&DenseLayer2->Bias);
-
-		matrix** Predictions;
-		cudaMallocManaged(&Predictions, sizeof(matrix*));
-		CudaNeuralNetForward(
-			NeuralNet,
-			Inputs,
-			NULL,
-			Predictions,
-			NULL
-		);
-
-		TestMatrixResult(
-			*Predictions,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaDimReductionLinearForwardNN",
-			EndianString
-		);
-	}
-	// SECTION STOP: Dim loss NN test
-
-	// SECTION START: Positive Relu NN test
-	{
-		uint32_t BatchSize = 10;
-		uint32_t InputDim = 1;
-
-		matrix* Inputs;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		FillMatrixConsecutive(Inputs);
-
-		neural_net* NeuralNet = NULL;
-		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-		CudaAddDense(NeuralNet, 1);
-		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-		SetMatrixElement(&DenseLayer->Weights, 0, 0, 2);
-		SetMatrixElement(&DenseLayer->Bias, 0, 0, 1);
-		CudaAddRelu(NeuralNet);
-		// NOTE: should be equivalent to 2x + 1
-
-		matrix** Predictions;
-		cudaMallocManaged(&Predictions, sizeof(matrix*));
-		CudaNeuralNetForward(
-			NeuralNet,
-			Inputs,
-			NULL,
-			Predictions,
-			NULL
-		);
-
-		TestMatrixResult(
-			*Predictions,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaPosReluNN",
-			EndianString
-		);
-	}
-	// SECTION STOP: Positive Relu NN test
-
-	// SECTION START: Negative Relu NN test
-	{
-		uint32_t BatchSize = 10;
-		uint32_t InputDim = 1;
-
-		matrix* Inputs;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		FillMatrixNegativeConsecutive(Inputs);
-
-		neural_net* NeuralNet = NULL;
-		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-		CudaAddDense(NeuralNet, 1);
-		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-		SetMatrixElement(&DenseLayer->Weights, 0, 0, 2);
-		SetMatrixElement(&DenseLayer->Bias, 0, 0, 1);
-		CudaAddRelu(NeuralNet);
-		// NOTE: should be equivalent to 2x, but then everything is zeroed due
-		// CONT: to RELU
-
-		matrix** Predictions;
-		cudaMallocManaged(&Predictions, sizeof(matrix*));
-		CudaNeuralNetForward(
-			NeuralNet,
-			Inputs,
-			NULL,
-			Predictions,
-			NULL
-		);
-
-		TestMatrixResult(
-			*Predictions,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaNegReluNN",
-			EndianString
-		);
-	}
-	// SECTION STOP: Negative Relu NN test
-
-	// SECTION START: One neuron training
-	{
-		uint32_t BatchSize = 5;
-		uint32_t InputDim = 1;
-
-		matrix* Inputs = NULL;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		FillMatrixConsecutive(Inputs);
-
-		neural_net* NeuralNet = NULL;
-		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-		CudaAddDense(NeuralNet, 1);
-
-		// NOTE: should be equivalent to 2x + 1
-		matrix* Labels;
-		CudaAllocMatrix(&Labels, BatchSize, 1);
-		SetMatrixElement(Labels, 0, 0, 3);
-		SetMatrixElement(Labels, 1, 0, 5);
-		SetMatrixElement(Labels, 2, 0, 7);
-		SetMatrixElement(Labels, 3, 0, 9);
-		SetMatrixElement(Labels, 4, 0, 11);
-
-		neural_net_trainer* Trainer;
-		CudaAllocNeuralNetTrainer(
-			&Trainer,
-			NeuralNet,
-			0.01f,
-			LayerType_Mse
-		);
-
-		CudaTrainNeuralNet(
-			Trainer,
-			NeuralNet,
-			Inputs,
-			Labels,
-			100
-		);
-
-		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-
-		TestMatrixResult(
-			&DenseLayer->Weights,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaOneNeuronNN_Weights",
-			EndianString
-		);
-		TestMatrixResult(
-			&DenseLayer->Bias,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaOneNeuronNN_Bias",
-			EndianString
-		);
-	}
-	// SECTION STOP: One neuron training
-
-	// SECTION START: More one neuron training
-	{
-		uint32_t BatchSize = 6;
-		uint32_t InputDim = 1;
-
-		matrix* Inputs;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		FillMatrixConsecutive(Inputs);
-
-		neural_net* NeuralNet = NULL;
-		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-		CudaAddDense(NeuralNet, 1);
-
-		// NOTE: should be equivalent to 5x - 3
-		matrix* Labels;
-		CudaAllocMatrix(&Labels, BatchSize, 1);
-		SetMatrixElement(Labels, 0, 0, 2);
-		SetMatrixElement(Labels, 1, 0, 7);
-		SetMatrixElement(Labels, 2, 0, 12);
-		SetMatrixElement(Labels, 3, 0, 17);
-		SetMatrixElement(Labels, 4, 0, 22);
-		SetMatrixElement(Labels, 5, 0, 27);
-
-		neural_net_trainer* Trainer;
-		CudaAllocNeuralNetTrainer(
-			&Trainer,
-			NeuralNet,
-			0.01f,
-			LayerType_Mse
-		);
-
-		CudaTrainNeuralNet(
-			Trainer,
-			NeuralNet,
-			Inputs,
-			Labels,
-			1000
-		);
-
-		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-		TestMatrixResult(
-			&DenseLayer->Weights,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaOneNeuronNN_Weights_2",
-			EndianString
-		);
-		TestMatrixResult(
-			&DenseLayer->Bias,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaOneNeuronNN_Bias_2",
-			EndianString
-		);
-	}
-	// SECTION STOP: More one neuron training
-
-	// SECTION START: two neuron training
-	{
-		uint32_t BatchSize = 2;
-		uint32_t InputDim = 2;
-		uint32_t OutputDim = 2;
-
-		matrix* Inputs;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		FillMatrixConsecutive(Inputs);
-
-		neural_net* NeuralNet = NULL;
-		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-		CudaAddDense(NeuralNet, OutputDim);
-
-		// NOTE: Labels set up to converge weight to 
-		/* CONT: 
-			W = 
-				| 2 3 |
-				| 4 5 |
-			b = 
-				| 1 2 |
-		*/
-		matrix* Labels;
-		CudaAllocMatrix(&Labels, BatchSize, OutputDim);
-		
-		SetMatrixElement(Labels, 0, 0, 11);
-		SetMatrixElement(Labels, 0, 1, 15);
-
-		SetMatrixElement(Labels, 1, 0, 23);
-		SetMatrixElement(Labels, 1, 1, 31);
-
-		neural_net_trainer* Trainer;
-		CudaAllocNeuralNetTrainer(
-			&Trainer,
-			NeuralNet,
-			0.01f,
-			LayerType_Mse
-		);
-
-		CudaTrainNeuralNet(
-			Trainer,
-			NeuralNet,
-			Inputs,
-			Labels,
-			100
-		);
-
-		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-
-		TestMatrixResult(
-			&DenseLayer->Weights,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaTwoNeuronNN_Weights",
-			EndianString
-		);
-		TestMatrixResult(
-			&DenseLayer->Bias,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaTwoNeuronNN_Bias",
-			EndianString
-		);
-	}
-	// SECTION STOP: two neuron training
-
-	// SECTION START: one layer training and prediction
-	{
-		uint32_t BatchSize = 2;
-		uint32_t InputDim = 2;
-		uint32_t OutputDim = 2;
-
-		matrix* Inputs;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		FillMatrixConsecutive(Inputs);
-
-		neural_net* NeuralNet = NULL;
-		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-		CudaAddDense(NeuralNet, OutputDim);
-
-		// NOTE: Labels set up to converge weight to 
-		/* CONT: 
-			W = 
-				| 2 3 |
-				| 4 5 |
-			b = 
-				| 1 2 |
-		*/
-		matrix* Labels;
-		CudaAllocMatrix(&Labels, BatchSize, OutputDim);
-		
-		SetMatrixElement(Labels, 0, 0, 11);
-		SetMatrixElement(Labels, 0, 1, 15);
-
-		SetMatrixElement(Labels, 1, 0, 23);
-		SetMatrixElement(Labels, 1, 1, 31);
-
-		neural_net_trainer* Trainer;
-		CudaAllocNeuralNetTrainer(
-			&Trainer,
-			NeuralNet,
-			0.01f,
-			LayerType_Mse
-		);
-
-		CudaTrainNeuralNet(
-			Trainer,
-			NeuralNet,
-			Inputs,
-			Labels,
-			100
-		);
-
-		matrix** Predictions;
-		cudaMallocManaged(&Predictions, sizeof(matrix*));
-		CudaNeuralNetForward(
-			NeuralNet,
-			Inputs,
-			NULL,
-			Predictions,
-			NULL
-		);
-
-		TestMatrixResult(
-			*Predictions,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaLinearOneLayerPrediction",
-			EndianString
-		);
-	}
-	// SECTION STOP: one layer training and prediction
-
-	// SECTION START: two layer training and prediction
-	{
-		uint32_t BatchSize = 2;
-		uint32_t InputDim = 2;
-		uint32_t HiddenDim = 32;
-		uint32_t OutputDim = 2;
-
-		matrix* Inputs;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		FillMatrixConsecutive(Inputs);
-
-		neural_net* NeuralNet = NULL;
-		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-		CudaAddDense(NeuralNet, HiddenDim);
-		CudaAddDense(NeuralNet, OutputDim);
-
-		matrix* Labels;
-		CudaAllocMatrix(&Labels, BatchSize, OutputDim);
-		
-		SetMatrixElement(Labels, 0, 0, 11);
-		SetMatrixElement(Labels, 0, 1, 15);
-
-		SetMatrixElement(Labels, 1, 0, 23);
-		SetMatrixElement(Labels, 1, 1, 31);
-
-		neural_net_trainer* Trainer;
-		CudaAllocNeuralNetTrainer(
-			&Trainer,
-			NeuralNet,
-			0.01f,
-			LayerType_Mse
-		);
-
-		CudaTrainNeuralNet(
-			Trainer,
-			NeuralNet,
-			Inputs,
-			Labels,
-			100
-		);
-
-		matrix** Predictions;
-		cudaMallocManaged(&Predictions, sizeof(matrix*));
-		CudaNeuralNetForward(
-			NeuralNet,
-			Inputs,
-			NULL,
-			Predictions,
-			NULL
-		);
-
-		TestMatrixResult(
-			*Predictions,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaLinearTwoLayerPrediction",
-			EndianString
-		);
-	}
-	// SECTION STOP: two layer training and prediction
-
-	// SECTION START: XOR Forward
-	{
-		uint32_t BatchSize = 4;
-		uint32_t InputDim = 2;
-		uint32_t HiddenDim = 8;
-		uint32_t OutputDim = 1;
-
-		matrix* Inputs;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		SetMatrixElement(Inputs, 0, 0, 0.0f);
-		SetMatrixElement(Inputs, 0, 1, 0.0f);
-
-		SetMatrixElement(Inputs, 1, 0, 0.0f);
-		SetMatrixElement(Inputs, 1, 1, 1.0f);
-
-		SetMatrixElement(Inputs, 2, 0, 1.0f);
-		SetMatrixElement(Inputs, 2, 1, 0.0f);
-
-		SetMatrixElement(Inputs, 3, 0, 1.0f);
-		SetMatrixElement(Inputs, 3, 1, 1.0f);
-
-		neural_net* NeuralNet = NULL;
-		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-		CudaAddDense(NeuralNet, HiddenDim);
-		CudaAddRelu(NeuralNet);
-		CudaAddDense(NeuralNet, OutputDim);
-
-		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-		float FirstLayerWeights[] = {
-			-0.6014779f,
-			0.6651714f,
-			-0.33612493f,
-			0.7284934f,
-			0.49762666f,
-			-0.33008203f,
-			-0.66281337f,
-			-0.7124146f,
-			0.6431314f,
-			0.6383204f,
-			-0.44230828f,
-			-0.7284539f,
-			0.7563155f,
-			0.29757506f,
-			-0.2068302f,
-			-0.04522699f
-		};
-		memcpy(
-			DenseLayer->Weights.Data,
-			FirstLayerWeights,
-			sizeof(FirstLayerWeights)
-		);
-		float FirstLayerBias[] = {
-			-3.8563503e-06f,
-			-6.3853890e-01f,
-			0.0f,
-			-6.8683788e-05f,
-			6.1795981e-05f,
-			-2.9789597e-01f,
-			0.0f,
-			0.0f
-		};
-		memcpy(
-			DenseLayer->Bias.Data,
-			FirstLayerBias,
-			sizeof(FirstLayerBias)
-		);
-
-		dense_layer* SecondDenseLayer = (dense_layer*) (
-			NeuralNet->FirstLink->Next->Next->Data
-		);
-		float SecondLayerWeights[] = {
-			0.7474555f,
-			-1.215051f,
-			-0.55316067f,
-			0.9348931f,
-			0.5940272f,
-			-0.53985476f,
-			-0.42657337f,
-			-0.5814253f
-		};
-		memcpy(
-			SecondDenseLayer->Weights.Data,
-			SecondLayerWeights,
-			sizeof(SecondLayerWeights)
-		);
-		float SecondLayerBias[] = {0.0f};
-		memcpy(
-			SecondDenseLayer->Bias.Data,
-			SecondLayerBias,
-			sizeof(SecondLayerBias)
-		);
-		
-		matrix** Predictions;
-		cudaMallocManaged(&Predictions, sizeof(matrix*));
-		CudaNeuralNetForward(
-			NeuralNet,
-			Inputs,
-			NULL,
-			Predictions,
-			NULL
-		);
-
-		TestMatrixResult(
-			*Predictions,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaGoodXorForward",
-			EndianString
-		);
-	}
-	// SECTION STOP: XOR Forward
-
-	// SECTION START: forward XOR with good initial weights
-	{
-		// NOTE: in keras, 8 neurons and one dense layer + RELU seems 
-		// CONT: to work. no momentum needed for high-dimensional stuff 
-		// CONT: 2000 epochs were needed too
-		uint32_t BatchSize = 4;
-		uint32_t InputDim = 2;
-		uint32_t HiddenDim = 8;
-		uint32_t OutputDim = 1;
-
-		matrix* Inputs;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		SetMatrixElement(Inputs, 0, 0, 0.0f);
-		SetMatrixElement(Inputs, 0, 1, 0.0f);
-
-		SetMatrixElement(Inputs, 1, 0, 0.0f);
-		SetMatrixElement(Inputs, 1, 1, 1.0f);
-
-		SetMatrixElement(Inputs, 2, 0, 1.0f);
-		SetMatrixElement(Inputs, 2, 1, 0.0f);
-
-		SetMatrixElement(Inputs, 3, 0, 1.0f);
-		SetMatrixElement(Inputs, 3, 1, 1.0f);
-
-		neural_net* NeuralNet = NULL;
-		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-		CudaAddDense(NeuralNet, HiddenDim);
-		CudaAddRelu(NeuralNet);
-		CudaAddDense(NeuralNet, OutputDim);
-
-		matrix* Labels;
-		CudaAllocMatrix(&Labels, BatchSize, OutputDim);
-		
-		// NOTE: this is set up to converge to a xor function
-		SetMatrixElement(Labels, 0, 0, 0.0f);
-		SetMatrixElement(Labels, 1, 0, 1.0f);
-		SetMatrixElement(Labels, 2, 0, 1.0f);
-		SetMatrixElement(Labels, 3, 0, 0.0f);
-
-		neural_net_trainer* Trainer;
-		CudaAllocNeuralNetTrainer(
-			&Trainer,
-			NeuralNet,
-			0.1f,
-			LayerType_Mse
-		);
-
-		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-		float FirstLayerWeights[] = {
-			-0.6014779f,
-			0.6651714f,
-			-0.33612493f,
-			0.7284934f,
-			0.49762666f,
-			-0.33008203f,
-			-0.66281337f,
-			-0.7124146f,
-			0.6431314f,
-			0.6383204f,
-			-0.44230828f,
-			-0.7284539f,
-			0.7563155f,
-			0.29757506f,
-			-0.2068302f,
-			-0.04522699f
-		};
-		memcpy(
-			DenseLayer->Weights.Data,
-			FirstLayerWeights,
-			sizeof(FirstLayerWeights)
-		);
-		float FirstLayerBias[] = {
-			-3.8563503e-06f,
-			-6.3853890e-01f,
-			0.0f,
-			-6.8683788e-05f,
-			6.1795981e-05f,
-			-2.9789597e-01f,
-			0.0f,
-			0.0f
-		};
-		memcpy(
-			DenseLayer->Bias.Data,
-			FirstLayerBias,
-			sizeof(FirstLayerBias)
-		);
-
-		dense_layer* SecondDenseLayer = (dense_layer*) (
-			NeuralNet->FirstLink->Next->Next->Data
-		);
-		float SecondLayerWeights[] = {
-			0.7474555f,
-			-1.215051f,
-			-0.55316067f,
-			0.9348931f,
-			0.5940272f,
-			-0.53985476f,
-			-0.42657337f,
-			-0.5814253f
-		};
-		memcpy(
-			SecondDenseLayer->Weights.Data,
-			SecondLayerWeights,
-			sizeof(SecondLayerWeights)
-		);
-		float SecondLayerBias[] = {0.0f};
-		memcpy(
-			SecondDenseLayer->Bias.Data,
-			SecondLayerBias,
-			sizeof(SecondLayerBias)
-		);
-
-		CudaTrainNeuralNet(
-			Trainer,
-			NeuralNet,
-			Inputs,
-			Labels,
-			100,
-			false
-		);
-
-		matrix** Predictions;
-		cudaMallocManaged(&Predictions, sizeof(matrix*));
-		CudaNeuralNetForward(
-			NeuralNet,
-			Inputs,
-			NULL,
-			Predictions,
-			NULL
-		);
-		
-		TestMatrixResult(
-			*Predictions,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaForwardXor_StaticTraining",
-			EndianString
-		);
-	}
-	// SECTION STOP: forward XOR with good initial weights
-
-	// SECTION START: forward XOR with close to perfect initial weights
-	{
-		// NOTE: in keras, 8 neurons and one dense layer + RELU seems 
-		// CONT: to work. no momentum needed for high-dimensional stuff 
-		// CONT: 2000 epochs were needed too
-		uint32_t BatchSize = 4;
-		uint32_t InputDim = 2;
-		uint32_t HiddenDim = 8;
-		uint32_t OutputDim = 1;
-
-		matrix* Inputs;
-		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-		SetMatrixElement(Inputs, 0, 0, 0.0f);
-		SetMatrixElement(Inputs, 0, 1, 0.0f);
-
-		SetMatrixElement(Inputs, 1, 0, 0.0f);
-		SetMatrixElement(Inputs, 1, 1, 1.0f);
-
-		SetMatrixElement(Inputs, 2, 0, 1.0f);
-		SetMatrixElement(Inputs, 2, 1, 0.0f);
-
-		SetMatrixElement(Inputs, 3, 0, 1.0f);
-		SetMatrixElement(Inputs, 3, 1, 1.0f);
-
-		neural_net* NeuralNet = NULL;
-		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-		CudaAddDense(NeuralNet, HiddenDim);
-		CudaAddRelu(NeuralNet);
-		CudaAddDense(NeuralNet, OutputDim);
-
-		matrix* Labels;
-		CudaAllocMatrix(&Labels, BatchSize, OutputDim);
-		
-		// NOTE: this is set up to converge to a xor function
-		SetMatrixElement(Labels, 0, 0, 0.0f);
-		SetMatrixElement(Labels, 1, 0, 1.0f);
-		SetMatrixElement(Labels, 2, 0, 1.0f);
-		SetMatrixElement(Labels, 3, 0, 0.0f);
-
-		neural_net_trainer* Trainer;
-		CudaAllocNeuralNetTrainer(
-			&Trainer, NeuralNet, 0.1f, LayerType_Mse
-		);
-
-		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-		float FirstLayerWeights[] = {
-			-0.6f,
-			0.7f,
-			-0.3f,
-			0.7f,
-			0.5f,
-			-0.3f,
-			-0.7f,
-			-0.7f,
-			0.6f,
-			0.6f,
-			-0.4f,
-			-0.7f,
-			0.8f,
-			0.3f,
-			-0.2f,
-			0.0f
-		};
-		memcpy(
-			DenseLayer->Weights.Data,
-			FirstLayerWeights,
-			sizeof(FirstLayerWeights)
-		);
-		float FirstLayerBias[] = {
-			-4e-06f,
-			-6e-01f,
-			0.0f,
-			-7e-05f,
-			6e-05f,
-			-3e-01f,
-			0.0f,
-			0.0f
-		};
-		memcpy(
-			DenseLayer->Bias.Data,
-			FirstLayerBias,
-			sizeof(FirstLayerBias)
-		);
-
-		dense_layer* SecondDenseLayer = (dense_layer*) (
-			NeuralNet->FirstLink->Next->Next->Data
-		);
-		float SecondLayerWeights[] = {
-			0.7f,
-			-1.0f,
-			-0.6f,
-			0.9f,
-			0.6f,
-			-0.5f,
-			-0.4f,
-			-0.6f
-		};
-		memcpy(
-			SecondDenseLayer->Weights.Data,
-			SecondLayerWeights,
-			sizeof(SecondLayerWeights)
-		);
-		float SecondLayerBias[] = {0.0f};
-		memcpy(
-			SecondDenseLayer->Bias.Data,
-			SecondLayerBias,
-			sizeof(SecondLayerBias)
-		);
-
-		CudaTrainNeuralNet(
-			Trainer,
-			NeuralNet,
-			Inputs,
-			Labels,
-			100,
-			false
-		);
-
-		matrix** Predictions;
-		cudaMallocManaged(&Predictions, sizeof(matrix*));
-		CudaNeuralNetForward(
-			NeuralNet,
-			Inputs,
-			NULL,
-			Predictions,
-			NULL
-		);
-
-		TestMatrixResult(
-			*Predictions,
-			FilePathBuffer, 
-			sizeof(FilePathBuffer),
-			TestDataDirectory,
-			"CudaForwardXor_Convergence",
-			EndianString
-		);
-	}
-	// SECTION STOP: forward XOR with close to perfect initial weights
-
-	// // SECTION START: MNIST with MSE
-	// printf("Starting MNIST training\n");
-	// {
-	// 	uint32_t MiniBatchSize = 32;
-	// 	uint32_t TrainingSamples = 2048;
-	// 	uint32_t TestSamples = 100;
-	// 	uint32_t Epochs = 100;
-	// 	float TrainingAccuracyThreshold = 0.99f;
-	// 	float LossThreshold = -0.00001f;
-	// 	float LearningRate = 0.1f;
-	// 	bool PrintTraining = true;
-
-	// 	snprintf(
-	// 		FilePathBuffer,
-	// 		sizeof(FilePathBuffer),
-	// 		"%s/%s",
-	// 		TestDataDirectory,
-	// 		"mnist_train.csv"
-	// 	);
-	// 	matrix* Data;
-	// 	matrix* Labels;
-	// 	CudaAllocMatrix(&Data, TrainingSamples, MNIST_DATA_SIZE);
-	// 	MatrixClear(Data);
-	// 	CudaAllocMatrix(&Labels, TrainingSamples, MNIST_CLASS_COUNT);
-	// 	MatrixClear(Labels);
-	// 	int Result = LoadMnistDigitCsv(
-	// 		Data, Labels, TrainingSamples, FilePathBuffer
-	// 	);
-
-	// 	if(Result == 0)
-	// 	{
-	// 		neural_net* NeuralNet = NULL;
-	// 		CudaAllocNeuralNet(&NeuralNet, MiniBatchSize, MNIST_DATA_SIZE);
-	// 		uint32_t HiddenDim = 64;
-	// 		CudaAddDense(NeuralNet, HiddenDim);
-	// 		CudaAddRelu(NeuralNet);
-	// 		CudaAddDense(NeuralNet, HiddenDim);
-	// 		CudaAddRelu(NeuralNet);
-	// 		CudaAddDense(NeuralNet, MNIST_CLASS_COUNT);
-
-	// 		neural_net_trainer* Trainer;
-	// 		CudaAllocNeuralNetTrainer(
-	// 			&Trainer,
-	// 			NeuralNet,
-	// 			LearningRate,
-	// 			LayerType_Mse,
-	// 			MiniBatchSize,
-	// 			Labels->NumColumns
-	// 		);
-
-	// 		neural_net* FullBatchNnViewer = NULL;
-	// 		CudaResizedNeuralNet(&FullBatchNnViewer, NeuralNet, TrainingSamples);
-	// 		neural_net* TestNnViewer = NULL;
-	// 		CudaResizedNeuralNet(&TestNnViewer, NeuralNet, TestSamples);
-
-	// 		CudaTrainNeuralNetMiniBatch(
-	// 			Trainer,
-	// 			NeuralNet,
-	// 			Data,
-	// 			Labels,
-	// 			Epochs,
-	// 			true,
-	// 			PrintTraining,
-	// 			TrainingAccuracyThreshold,
-	// 			LossThreshold,
-	// 			FullBatchNnViewer
-	// 		);
-
-	// 		float TrainingAccuracy = CudaTopOneAccuracy(
-	// 			FullBatchNnViewer, Data, Labels
-	// 		);
-	// 		printf("TrainingAccuracy = %f\n", TrainingAccuracy);
-
-	// 		snprintf(
-	// 			FilePathBuffer,
-	// 			sizeof(FilePathBuffer),
-	// 			"%s/%s",
-	// 			TestDataDirectory,
-	// 			"mnist_test.csv"
-	// 		);
-
-	// 		matrix* TestData = NULL;
-	// 		matrix* TestLabels = NULL;
-	// 		CudaAllocMatrix(&TestData, TestSamples, MNIST_DATA_SIZE);
-	// 		CudaAllocMatrix(&TestLabels, TestSamples, MNIST_CLASS_COUNT);
-	// 		Result = LoadMnistDigitCsv(
-	// 			TestData, TestLabels, TestSamples, FilePathBuffer
-	// 		);
-	// 		float TestAccuracy = CudaTopOneAccuracy(
-	// 			TestNnViewer, TestData, TestLabels
-	// 		);
-	// 		printf("TestAccuracy = %f\n", TestAccuracy);
-
-	// 		if(TestAccuracy < 0.9f)
-	// 		{
-	// 			printf("MNIST training test failed\n");
-	// 		}
-
-	// 		// SECTION START: test model saving and loading
-	// 		// snprintf(
-	// 		// 	FilePathBuffer,
-	// 		// 	sizeof(FilePathBuffer),
-	// 		// 	"%s/%s",
-	// 		// 	TestDataDirectory,
-	// 		// 	"models"
-	// 		// );
-	// 		// if(!PathFileExistsA(FilePathBuffer))
-	// 		// {
-	// 		// 	CreateDirectoryA(
-	// 		// 		FilePathBuffer,
-	// 		// 		NULL
-	// 		// 	);
-	// 		// }
-	// 		// snprintf(
-	// 		// 	FilePathBuffer,
-	// 		// 	sizeof(FilePathBuffer),
-	// 		// 	"%s/models/mnist_%dsamples.model",
-	// 		// 	TestDataDirectory,
-	// 		// 	TrainingSamples
-	// 		// );
-	// 		// SaveNeuralNet(NeuralNet, FilePathBuffer);
-
-	// 		// neural_net* LoadedNeuralNet;
-	// 		// LoadNeuralNet(
-	// 		// 	&LoadedNeuralNet, FilePathBuffer, TestSamples, 4
-	// 		// );
-
-	// 		// float LoadedNnTestAccuracy = TopOneAccuracy(
-	// 		// 	LoadedNeuralNet, TestData, TestLabels
-	// 		// );
-	// 		// printf("Loaded NN TestAccuracy = %f\n", LoadedNnTestAccuracy);
-
-	// 		// SECTION STOP: test model saving and loading
-
-	// 		// SECTION START: test freeing neural nets
-	// 		// TODO: add a check for available memory before and after
-	// 		// FreeNeuralNetTrainer(Trainer);
-	// 		// FreeNeuralNet(NeuralNet);
-	// 		// FreeNeuralNet(LoadedNeuralNet);
-	// 		// FreeResizedNeuralNet(FullBatchNnViewer);
-	// 		// FreeResizedNeuralNet(TestNnViewer);
-	// 		// SECTION STOP: test freeing neural nets
-	// 	}
-	// 	else
-	// 	{
-	// 		printf("Unable to run mnist test\n");
-	// 	}
-	// }
-	// // SECTION STOP: MNIST with MSE
-
-	return 0;
 }
