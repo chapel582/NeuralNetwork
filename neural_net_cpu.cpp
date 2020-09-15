@@ -299,20 +299,27 @@ void MatrixMultM1TransposeCore(
 	// NOTE: For transpose multiplication without allocating and initializing
 	// CONT: a new matrix
 	// NOTE: the number of rows in M1 should equal the number of rows in M2
-	for(uint32_t Row = Start; Row < M1->NumColumns; Row += Stride)
+	uint32_t CommonDim = M1->NumRows;
+	uint32_t ResultRows = Result->NumRows;
+	uint32_t ResultColumns = Result->NumColumns;
+	uint32_t NumResultElements = ResultRows * ResultColumns;
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Column = 0; Column < M2->NumColumns; Column++)
+		uint32_t Row = ResultIndex / ResultColumns;
+		uint32_t Column = ResultIndex % ResultColumns;
+		float DotProduct = 0.0f;
+		for(uint32_t DPIndex = 0; DPIndex < CommonDim; DPIndex++)
 		{
-			float DotProduct = 0.0f;
-			for(uint32_t DPIndex = 0; DPIndex < M1->NumRows; DPIndex++)
-			{
-				DotProduct += (
-					GetMatrixElement(M1, DPIndex, Row) * 
-					GetMatrixElement(M2, DPIndex, Column)
-				);
-			}
-			SetMatrixElement(Result, Row, Column, DotProduct);
+			DotProduct += (
+				GetMatrixElement(M1, DPIndex, Row) * 
+				GetMatrixElement(M2, DPIndex, Column)
+			);
 		}
+		SetMatrixElement(Result, Row, Column, DotProduct);
 	}
 }
 

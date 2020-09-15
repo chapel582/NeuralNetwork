@@ -59,7 +59,6 @@ int main(void)
 	QueryPerformanceFrequency(&PerformanceFrequency);
 	GlobalPerformanceFrequency = PerformanceFrequency.QuadPart;
 
-	// SECTION START: RoundTrip: M1 low number of rows test	
 	{
 		matrix* M1;
 		uint32_t NumRows = 32;
@@ -83,13 +82,42 @@ int main(void)
 		cudaDeviceSynchronize();
 		int64_t EndClock = Win32GetWallClock(); 
 		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
-		printf("MatrixMult seconds: %f\n", Seconds);
+		printf("MatrixMult plain seconds: %f\n", Seconds);
 		
 		CudaFreeMatrix(M1);
 		CudaFreeMatrix(M2);
 		CudaFreeMatrix(MultResult);
 	}
-	// SECTION STOP: RoundTrip: M1 low number of rows test
+
+	{
+		matrix* M1;
+		uint32_t NumRows = 2 << 10;
+		uint32_t NumColumns = 32;
+		CudaAllocMatrix(&M1, NumRows, NumColumns);
+		FillMatrixConsecutive(M1);		
+
+		matrix* M2;
+		NumRows = 2 << 10;
+		NumColumns = 64;
+		CudaAllocMatrix(&M2, NumRows, NumColumns);
+		FillMatrixConsecutive(M2);
+
+		matrix* MultResult;
+		CudaAllocM1TransposeMultResultMatrix(&MultResult, M1, M2);
+
+		int BlockSize = GetBlockSize(0);
+		int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, 0);
+		int64_t StartClock = Win32GetWallClock(); 
+		CudaMatrixMultM1Transpose(M1, M2, MultResult);
+		cudaDeviceSynchronize();
+		int64_t EndClock = Win32GetWallClock(); 
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("MatrixMult m1 transpose seconds: %f\n", Seconds);
+		
+		CudaFreeMatrix(M1);
+		CudaFreeMatrix(M2);
+		CudaFreeMatrix(MultResult);
+	}
 
 	// // SECTION START: RoundTrip: M1, M2 high rows,columns test	
 	// {
