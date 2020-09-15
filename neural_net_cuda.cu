@@ -378,20 +378,27 @@ void CudaMatrixMultM2TransposeCore(
 	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
-	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	uint32_t CommonDim = M1->NumColumns;
+	uint32_t ResultRows = Result->NumRows;
+	uint32_t ResultColumns = Result->NumColumns;
+	uint32_t NumResultElements = ResultRows * ResultColumns;
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Column = 0; Column < M2->NumRows; Column++)
+		uint32_t Row = ResultIndex / ResultColumns;
+		uint32_t Column = ResultIndex % ResultColumns;
+		float DotProduct = 0.0f;
+		for(uint32_t DPIndex = 0; DPIndex < CommonDim; DPIndex++)
 		{
-			float DotProduct = 0.0f;
-			for(uint32_t DPIndex = 0; DPIndex < M1->NumColumns; DPIndex++)
-			{
-				DotProduct += (
-					CudaGetMatrixElement(M1, Row, DPIndex) * 
-					CudaGetMatrixElement(M2, Column, DPIndex)
-				);
-			}
-			CudaSetMatrixElement(Result, Row, Column, DotProduct);
+			DotProduct += (
+				CudaGetMatrixElement(M1, Row, DPIndex) * 
+				CudaGetMatrixElement(M2, Column, DPIndex)
+			);
 		}
+		CudaSetMatrixElement(Result, Row, Column, DotProduct);
 	}
 }
 
@@ -417,7 +424,9 @@ void CudaMatrixMultM2Transpose(matrix* M1, matrix* M2, matrix* Result)
 
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, Device);
+	uint32_t NumBlocks = GetNumBlocks(
+		Result->NumRows * Result->NumColumns, BlockSize, Device
+	);
 	CudaMatrixMultM2TransposeThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
 }

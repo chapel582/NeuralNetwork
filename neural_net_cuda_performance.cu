@@ -75,11 +75,8 @@ int main(void)
 		matrix* MultResult;
 		CudaAllocMultResultMatrix(&MultResult, M1, M2);
 
-		int BlockSize = GetBlockSize(0);
-		int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, 0);
 		int64_t StartClock = Win32GetWallClock(); 
 		CudaMatrixMult(M1, M2, MultResult);
-		cudaDeviceSynchronize();
 		int64_t EndClock = Win32GetWallClock(); 
 		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
 		printf("MatrixMult plain seconds: %f\n", Seconds);
@@ -105,14 +102,38 @@ int main(void)
 		matrix* MultResult;
 		CudaAllocM1TransposeMultResultMatrix(&MultResult, M1, M2);
 
-		int BlockSize = GetBlockSize(0);
-		int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, 0);
 		int64_t StartClock = Win32GetWallClock(); 
 		CudaMatrixMultM1Transpose(M1, M2, MultResult);
-		cudaDeviceSynchronize();
 		int64_t EndClock = Win32GetWallClock(); 
 		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
 		printf("MatrixMult m1 transpose seconds: %f\n", Seconds);
+		
+		CudaFreeMatrix(M1);
+		CudaFreeMatrix(M2);
+		CudaFreeMatrix(MultResult);
+	}
+
+	{
+		matrix* M1;
+		uint32_t NumRows = 32;
+		uint32_t NumColumns = 2 << 10;
+		CudaAllocMatrix(&M1, NumRows, NumColumns);
+		FillMatrixConsecutive(M1);		
+
+		matrix* M2;
+		NumRows = 64;
+		NumColumns = 2 << 10;
+		CudaAllocMatrix(&M2, NumRows, NumColumns);
+		FillMatrixConsecutive(M2);
+
+		matrix* MultResult;
+		CudaAllocM2TransposeMultResultMatrix(&MultResult, M1, M2);
+
+		int64_t StartClock = Win32GetWallClock(); 
+		CudaMatrixMultM2Transpose(M1, M2, MultResult);
+		int64_t EndClock = Win32GetWallClock(); 
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("MatrixMult m2 transpose seconds: %f\n", Seconds);
 		
 		CudaFreeMatrix(M1);
 		CudaFreeMatrix(M2);
