@@ -378,4 +378,256 @@ int main(void)
 		CudaFreeMatrix(AddResult);
 	}
 	// SECTION STOP: MatrixAdd: Consecutive, large data
+
+	// SECTION START: Dense layer large batch size
+	{
+		uint32_t BatchSize = 2 << 10;
+		uint32_t InputDim = 4;
+		uint32_t OutputDim = 3;
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
+
+		matrix* Outputs;
+		CudaAllocMatrix(&Outputs, BatchSize, OutputDim);
+		MatrixClear(Outputs);
+
+		dense_layer* DenseLayer;
+		CudaAllocDenseLayer(&DenseLayer, InputDim, OutputDim);
+		FillMatrixConsecutive(&DenseLayer->Weights);
+		FillMatrixConsecutive(&DenseLayer->Bias);
+		int64_t StartClock = Win32GetWallClock(); 
+		CudaDenseForward(Inputs, DenseLayer, Outputs);
+		int64_t EndClock = Win32GetWallClock(); 
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("DenseForward: Large batch: %f\n", Seconds);
+
+		matrix* NextLayerGradient;
+		CudaAllocMatrix(&NextLayerGradient, BatchSize, OutputDim);
+		FillMatrixConsecutive(NextLayerGradient);
+
+		dense_layer_train_data* TrainData;
+		CudaAllocDenseLayerTrain(&TrainData, DenseLayer, 1.0f, BatchSize);
+		StartClock = Win32GetWallClock();
+		CudaDenseBack(
+			Inputs, NextLayerGradient, DenseLayer, TrainData
+		);
+		EndClock = Win32GetWallClock();
+		Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("DenseBack: Large batch: %f\n", Seconds);
+		CudaFreeDenseLayer(DenseLayer);
+		CudaFreeDenseLayerTrain(TrainData);
+	}
+	// SECTION STOP: Dense layer large batch size
+
+	// SECTION START: Dense layer large input dim
+	{
+		uint32_t BatchSize = 8;
+		uint32_t InputDim = 2 << 10;
+		uint32_t OutputDim = 3;
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
+
+		matrix* Outputs;
+		CudaAllocMatrix(&Outputs, BatchSize, OutputDim);
+		MatrixClear(Outputs);
+
+		dense_layer* DenseLayer;
+		CudaAllocDenseLayer(&DenseLayer, InputDim, OutputDim);
+		FillMatrixConsecutive(&DenseLayer->Weights);
+		FillMatrixConsecutive(&DenseLayer->Bias);
+		int64_t StartClock = Win32GetWallClock(); 
+		CudaDenseForward(Inputs, DenseLayer, Outputs);
+		int64_t EndClock = Win32GetWallClock(); 
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("DenseForward: Large input dim: %f\n", Seconds);
+
+		matrix* NextLayerGradient;
+		CudaAllocMatrix(&NextLayerGradient, BatchSize, OutputDim);
+		FillMatrixConsecutive(NextLayerGradient);
+
+		dense_layer_train_data* TrainData;
+		CudaAllocDenseLayerTrain(&TrainData, DenseLayer, 1.0f, BatchSize);
+		StartClock = Win32GetWallClock();
+		CudaDenseBack(
+			Inputs, NextLayerGradient, DenseLayer, TrainData
+		);
+		EndClock = Win32GetWallClock();
+		Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("DenseBack: Large input dim: %f\n", Seconds);
+		CudaFreeDenseLayer(DenseLayer);
+		CudaFreeDenseLayerTrain(TrainData);
+	}
+	// SECTION STOP: Dense layer large input dim
+
+	// SECTION START: Dense layer large batch and large input dim
+	{
+		uint32_t BatchSize = 2 << 10;
+		uint32_t InputDim = 2 << 10;
+		uint32_t OutputDim = 3;
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
+
+		matrix* Outputs;
+		CudaAllocMatrix(&Outputs, BatchSize, OutputDim);
+		MatrixClear(Outputs);
+
+		dense_layer* DenseLayer;
+		CudaAllocDenseLayer(&DenseLayer, InputDim, OutputDim);
+		FillMatrixConsecutive(&DenseLayer->Weights);
+		FillMatrixConsecutive(&DenseLayer->Bias);
+		int64_t StartClock = Win32GetWallClock(); 
+		CudaDenseForward(Inputs, DenseLayer, Outputs);
+		int64_t EndClock = Win32GetWallClock(); 
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("DenseForward: Large batch and large input dim: %f\n", Seconds);
+
+		matrix* NextLayerGradient;
+		CudaAllocMatrix(&NextLayerGradient, BatchSize, OutputDim);
+		FillMatrixConsecutive(NextLayerGradient);
+
+		dense_layer_train_data* TrainData;
+		CudaAllocDenseLayerTrain(&TrainData, DenseLayer, 1.0f, BatchSize);
+		StartClock = Win32GetWallClock();
+		CudaDenseBack(
+			Inputs, NextLayerGradient, DenseLayer, TrainData
+		);
+		EndClock = Win32GetWallClock();
+		Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("DenseBack: Large batch and large input dim: %f\n", Seconds);
+		CudaFreeDenseLayer(DenseLayer);
+		CudaFreeDenseLayerTrain(TrainData);
+	}
+	// SECTION STOP: Dense layer large batch and large input dim
+
+	// SECTION START: Dense layer large batch and large input dim and large output dim
+	{
+		uint32_t BatchSize = 2 << 10;
+		uint32_t InputDim = 2 << 10;
+		uint32_t OutputDim = 2 << 10;
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
+
+		matrix* Outputs;
+		CudaAllocMatrix(&Outputs, BatchSize, OutputDim);
+		MatrixClear(Outputs);
+
+		dense_layer* DenseLayer;
+		CudaAllocDenseLayer(&DenseLayer, InputDim, OutputDim);
+		FillMatrixConsecutive(&DenseLayer->Weights);
+		FillMatrixConsecutive(&DenseLayer->Bias);
+		int64_t StartClock = Win32GetWallClock(); 
+		CudaDenseForward(Inputs, DenseLayer, Outputs);
+		int64_t EndClock = Win32GetWallClock(); 
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf(
+			"DenseForward: large batch, input dim and output dim: %f\n", 
+			Seconds
+		);
+
+		matrix* NextLayerGradient;
+		CudaAllocMatrix(&NextLayerGradient, BatchSize, OutputDim);
+		FillMatrixConsecutive(NextLayerGradient);
+
+		dense_layer_train_data* TrainData;
+		CudaAllocDenseLayerTrain(&TrainData, DenseLayer, 1.0f, BatchSize);
+		StartClock = Win32GetWallClock();
+		CudaDenseBack(
+			Inputs, NextLayerGradient, DenseLayer, TrainData
+		);
+		EndClock = Win32GetWallClock();
+		Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf(
+			"DenseBack: large batch, input dim, and output dim: %f\n",
+			Seconds
+		);
+		CudaFreeDenseLayer(DenseLayer);
+		CudaFreeDenseLayerTrain(TrainData);
+	}
+	// SECTION STOP: Dense layer large batch and large input dim and large output dim
+
+	// SECTION START: Dense layer large input dim and large output dim
+	{
+		uint32_t BatchSize = 32;
+		uint32_t InputDim = 2 << 10;
+		uint32_t OutputDim = 2 << 10;
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
+
+		matrix* Outputs;
+		CudaAllocMatrix(&Outputs, BatchSize, OutputDim);
+		MatrixClear(Outputs);
+
+		dense_layer* DenseLayer;
+		CudaAllocDenseLayer(&DenseLayer, InputDim, OutputDim);
+		FillMatrixConsecutive(&DenseLayer->Weights);
+		FillMatrixConsecutive(&DenseLayer->Bias);
+		int64_t StartClock = Win32GetWallClock(); 
+		CudaDenseForward(Inputs, DenseLayer, Outputs);
+		int64_t EndClock = Win32GetWallClock(); 
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("DenseForward: Large input and output dim: %f\n", Seconds);
+
+		matrix* NextLayerGradient;
+		CudaAllocMatrix(&NextLayerGradient, BatchSize, OutputDim);
+		FillMatrixConsecutive(NextLayerGradient);
+
+		dense_layer_train_data* TrainData;
+		CudaAllocDenseLayerTrain(&TrainData, DenseLayer, 1.0f, BatchSize);
+		StartClock = Win32GetWallClock();
+		CudaDenseBack(
+			Inputs, NextLayerGradient, DenseLayer, TrainData
+		);
+		EndClock = Win32GetWallClock();
+		Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("DenseBack: Large input and output dim: %f\n", Seconds);
+		CudaFreeDenseLayer(DenseLayer);
+		CudaFreeDenseLayerTrain(TrainData);
+	}
+	// SECTION STOP: Dense layer large input dim and large output dim
+
+	// SECTION START: Dense layer large output dim
+	{
+		uint32_t BatchSize = 32;
+		uint32_t InputDim = 4;
+		uint32_t OutputDim = 2 << 10;
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
+
+		matrix* Outputs;
+		CudaAllocMatrix(&Outputs, BatchSize, OutputDim);
+		MatrixClear(Outputs);
+
+		dense_layer* DenseLayer;
+		CudaAllocDenseLayer(&DenseLayer, InputDim, OutputDim);
+		FillMatrixConsecutive(&DenseLayer->Weights);
+		FillMatrixConsecutive(&DenseLayer->Bias);
+		int64_t StartClock = Win32GetWallClock(); 
+		CudaDenseForward(Inputs, DenseLayer, Outputs);
+		int64_t EndClock = Win32GetWallClock(); 
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("DenseForward: Large output dim: %f\n", Seconds);
+
+		matrix* NextLayerGradient;
+		CudaAllocMatrix(&NextLayerGradient, BatchSize, OutputDim);
+		FillMatrixConsecutive(NextLayerGradient);
+
+		dense_layer_train_data* TrainData;
+		CudaAllocDenseLayerTrain(&TrainData, DenseLayer, 1.0f, BatchSize);
+		StartClock = Win32GetWallClock();
+		CudaDenseBack(
+			Inputs, NextLayerGradient, DenseLayer, TrainData
+		);
+		EndClock = Win32GetWallClock();
+		Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("DenseBack: Large output dim: %f\n", Seconds);
+		CudaFreeDenseLayer(DenseLayer);
+		CudaFreeDenseLayerTrain(TrainData);
+	}
+	// SECTION STOP: Dense layer large output dim
 }

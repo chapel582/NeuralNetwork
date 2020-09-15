@@ -616,6 +616,13 @@ void CudaAllocDenseLayer(
 	CudaInitMatrix(&DenseLayer->Bias, 1, OutputDim);
 }
 
+void CudaFreeDenseLayer(dense_layer* DenseLayer)
+{
+	CudaFreeMatrixData(&DenseLayer->Weights);
+	CudaFreeMatrixData(&DenseLayer->Bias);
+	cudaFree(DenseLayer);
+}
+
 __device__
 void CudaDenseForwardCore(
 	matrix* Inputs,
@@ -679,6 +686,14 @@ void CudaAllocDenseLayerTrain(
 	CudaInitMatrix(
 		&TrainData->LayerGradient, BatchSize, DenseLayer->Weights.NumRows
 	);
+}
+
+void CudaFreeDenseLayerTrain(dense_layer_train_data* TrainData)
+{
+	CudaFreeMatrixData(&TrainData->WeightsDelta);
+	CudaFreeMatrixData(&TrainData->BiasDelta);
+	CudaFreeMatrixData(&TrainData->LayerGradient);
+	cudaFree(TrainData);
 }
 
 __device__
