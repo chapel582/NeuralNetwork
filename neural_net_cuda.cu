@@ -157,31 +157,32 @@ uint32_t GetNumBlocks(uint32_t Range, uint32_t BlockSize, uint32_t Device)
 	return NumBlocks;
 }
 
-// __device__
-// int CudaGetNumBlocks(int Range, int BlockSize)
-// {
-// 	return (Range + BlockSize - 1) / BlockSize;
-// }
-
 __device__
 void CudaMatrixMultCore(
 	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
-	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	uint32_t CommonDim = M1->NumColumns;
+	uint32_t ResultRows = Result->NumRows;
+	uint32_t ResultColumns = Result->NumColumns;
+	uint32_t NumResultElements = ResultRows * ResultColumns;
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Column = 0; Column < M2->NumColumns; Column++)
+		uint32_t Row = ResultIndex / ResultColumns;
+		uint32_t Column = ResultIndex % ResultColumns;
+		float DotProduct = 0.0f;
+		for(uint32_t DPIndex = 0; DPIndex < CommonDim; DPIndex++)
 		{
-			float DotProduct = 0.0f;
-			for(uint32_t DPIndex = 0; DPIndex < M1->NumColumns; DPIndex++)
-			{
-				DotProduct += (
-					CudaGetMatrixElement(M1, Row, DPIndex) * 
-					CudaGetMatrixElement(M2, DPIndex, Column)
-				);
-			}
-			CudaSetMatrixElement(Result, Row, Column, DotProduct);
+			DotProduct += (
+				CudaGetMatrixElement(M1, Row, DPIndex) * 
+				CudaGetMatrixElement(M2, DPIndex, Column)
+			);
 		}
+		CudaSetMatrixElement(Result, Row, Column, DotProduct);
 	}
 }
 
@@ -202,7 +203,9 @@ void CudaMatrixMult(matrix* M1, matrix* M2, matrix* Result)
 	assert(M1->NumColumns == M2->NumRows);
 	uint32_t Device = 0;
 	int BlockSize = GetBlockSize(Device);
-	int NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, Device);
+	int NumBlocks = GetNumBlocks(
+		Result->NumRows * Result->NumColumns, BlockSize, Device
+	);
 	CudaMatrixMultThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
 }

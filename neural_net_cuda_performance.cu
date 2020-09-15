@@ -62,7 +62,7 @@ int main(void)
 	// SECTION START: RoundTrip: M1 low number of rows test	
 	{
 		matrix* M1;
-		uint32_t NumRows = 2048;
+		uint32_t NumRows = 32;
 		uint32_t NumColumns = 2 << 10;
 		CudaAllocMatrix(&M1, NumRows, NumColumns);
 		FillMatrixConsecutive(M1);		
