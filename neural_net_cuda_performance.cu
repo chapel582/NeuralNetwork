@@ -140,6 +140,33 @@ int main(void)
 		CudaFreeMatrix(MultResult);
 	}
 
+	{
+		matrix* M1;
+		uint32_t NumRows = 2 << 10;
+		uint32_t NumColumns = 32;
+		CudaAllocMatrix(&M1, NumRows, NumColumns);
+		FillMatrixConsecutive(M1);		
+
+		matrix* M2;
+		NumRows = 64;
+		NumColumns = 2 << 10;
+		CudaAllocMatrix(&M2, NumRows, NumColumns);
+		FillMatrixConsecutive(M2);
+
+		matrix* MultResult;
+		CudaAllocM1M2TransposeMultResultMatrix(&MultResult, M1, M2);
+
+		int64_t StartClock = Win32GetWallClock(); 
+		CudaMatrixMultM1M2Transpose(M1, M2, MultResult);
+		int64_t EndClock = Win32GetWallClock(); 
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("MatrixMult m1m2 transpose seconds: %f\n", Seconds);
+		
+		CudaFreeMatrix(M1);
+		CudaFreeMatrix(M2);
+		CudaFreeMatrix(MultResult);
+	}
+
 	// // SECTION START: RoundTrip: M1, M2 high rows,columns test	
 	// {
 	// 	matrix* M1;
