@@ -169,7 +169,7 @@ int main(void)
 
 	{
 		matrix* M1;
-		uint32_t NumRows = 32;
+		uint32_t NumRows = 64;
 		uint32_t NumColumns = 2 << 10;
 		CudaAllocMatrix(&M1, NumRows, NumColumns);
 		FillMatrixConsecutive(M1);		
@@ -194,7 +194,7 @@ int main(void)
 
 	{
 		matrix* M1;
-		uint32_t NumRows = 32;
+		uint32_t NumRows = 64;
 		uint32_t NumColumns = 2 << 10;
 		CudaAllocMatrix(&M1, NumRows, NumColumns);
 		FillMatrixConsecutive(M1);
