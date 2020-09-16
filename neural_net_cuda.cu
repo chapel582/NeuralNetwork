@@ -1127,13 +1127,14 @@ void CudaMseBackCore(
 	uint32_t Stride
 )
 {
+	matrix* LayerGradient = &TrainData->LayerGradient;
 	CudaMatrixSubtractCore(
-		Labels, Predictions, &TrainData->LayerGradient, Start, Stride
+		Labels, Predictions, LayerGradient, Start, Stride
 	);
 	CudaMatrixScalarMultCore(
 		1.0f / Predictions->NumColumns,
-		&TrainData->LayerGradient,
-		&TrainData->LayerGradient,
+		LayerGradient,
+		LayerGradient,
 		Start,
 		Stride
 	);
@@ -1157,7 +1158,7 @@ void CudaMeanSquaredBack(
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
 	uint32_t NumBlocks = GetNumBlocks(
-		GetMatrixArrayCount(Predictions), BlockSize, Device
+		GetMatrixArrayCount(&TrainData->LayerGradient), BlockSize, Device
 	);
 	CudaMseBackThread<<<NumBlocks, BlockSize>>>(Predictions, Labels, TrainData);
 	cudaDeviceSynchronize();
