@@ -11,9 +11,14 @@ struct matrix
 	float* Data;
 };
 
+inline uint32_t GetMatrixArrayCount(matrix* Matrix)
+{
+	return Matrix->NumRows * Matrix->NumColumns;
+}
+
 inline size_t GetMatrixDataSize(matrix* Matrix)
 {
-	return Matrix->NumRows * Matrix->NumColumns * sizeof(float);
+	return GetMatrixArrayCount(Matrix) * sizeof(float);
 }
 
 inline float* GetMatrixRow(matrix* Matrix, uint32_t Row)
@@ -36,7 +41,7 @@ inline float GetMatrixElement(matrix* Matrix, uint32_t ElementIndex)
 	// NOTE: made available if the Row, Column asserts in the standard 
 	// CONT: GetMatrixElement isn't needed. Mostly used for when you don't care
 	// CONT: if you have a row or column matrix
-	assert(ElementIndex < (Matrix->NumRows * Matrix->NumColumns));
+	assert(ElementIndex < GetMatrixArrayCount(Matrix));
 	float* Element = Matrix->Data + ElementIndex;
 	return *Element;
 }
@@ -58,7 +63,7 @@ inline void SetMatrixElement(
 	// NOTE: made available if the Row, Column asserts in the standard 
 	// CONT: GetMatrixElement isn't needed. Mostly used for when you don't care
 	// CONT: if you have a row or column matrix
-	assert(ElementIndex < (Matrix->NumRows * Matrix->NumColumns));
+	assert(ElementIndex < GetMatrixArrayCount(Matrix));
 	float* Element = Matrix->Data + ElementIndex;
 	*Element = Value;
 }

@@ -144,11 +144,27 @@ int main(void)
 		MatrixAdd(MatrixOpJobs, M1, M2, AddResult);
 		int64_t EndClock = Win32GetWallClock(); 
 		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
-		printf("MatrixMult m1m2 transpose seconds: %f\n", Seconds);
+		printf("MatrixAdd seconds: %f\n", Seconds);
 		
 		FreeMatrix(M1);
 		FreeMatrix(M2);
 		FreeMatrix(AddResult);
+	}
+
+	{
+		matrix* M1;
+		uint32_t NumRows = 32;
+		uint32_t NumColumns = 2 << 10;
+		AllocMatrix(&M1, NumRows, NumColumns);
+		FillMatrixConsecutive(M1);
+		
+		int64_t StartClock = Win32GetWallClock(); 
+		MatrixScalarMult(MatrixOpJobs, 0.5f, M1, M1);
+		int64_t EndClock = Win32GetWallClock(); 
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("MatrixScalarMult seconds: %f\n", Seconds);
+
+		FreeMatrix(M1);
 	}
 
 	// // SECTION START: MatrixMult: M1 high number of rows test

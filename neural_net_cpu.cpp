@@ -194,13 +194,19 @@ void MatrixScalarMultCore(
 	float Scalar, matrix* M1, matrix* Result, int Start, int Stride
 )
 {
-	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Column = 0; Column < M1->NumColumns; Column++)
-		{
-			float NewValue = Scalar * GetMatrixElement(M1, Row, Column);
-			SetMatrixElement(Result, Row, Column, NewValue);
-		}
+		float NewValue = Scalar * GetMatrixElement(M1, ResultIndex);		
+		SetMatrixElement(
+			Result,
+			ResultIndex,
+			NewValue
+		);
 	}
 }
 
@@ -254,9 +260,8 @@ void MatrixMultCore(
 {
 	// NOTE: the number of columns in M1 should equal the number of rows in M2
 	uint32_t CommonDim = M1->NumColumns;
-	uint32_t ResultRows = Result->NumRows;
 	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = ResultRows * ResultColumns;
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -300,9 +305,8 @@ void MatrixMultM1TransposeCore(
 	// CONT: a new matrix
 	// NOTE: the number of rows in M1 should equal the number of rows in M2
 	uint32_t CommonDim = M1->NumRows;
-	uint32_t ResultRows = Result->NumRows;
 	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = ResultRows * ResultColumns;
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -347,9 +351,8 @@ void MatrixMultM2TransposeCore(
 )
 {
 	uint32_t CommonDim = M1->NumColumns;
-	uint32_t ResultRows = Result->NumRows;
 	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = ResultRows * ResultColumns;
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -394,9 +397,8 @@ void MatrixMultM1M2TransposeCore(
 )
 {
 	uint32_t CommonDim = M1->NumRows;
-	uint32_t ResultRows = Result->NumRows;
 	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = ResultRows * ResultColumns;
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -437,9 +439,7 @@ void MatrixMultM1M2Transpose(
 
 void MatrixAddCore(matrix* M1, matrix* M2, matrix* Result, int Start, int Stride)
 {
-	uint32_t ResultRows = Result->NumRows;
-	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = ResultRows * ResultColumns;
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;

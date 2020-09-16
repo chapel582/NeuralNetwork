@@ -12,6 +12,12 @@
 #include <assert.h>
 
 __device__
+uint32_t CudaGetMatrixArrayCount(matrix* Matrix)
+{
+	return Matrix->NumRows * Matrix->NumColumns;
+}
+
+__device__
 float CudaGetMatrixElement(matrix* Matrix, uint32_t Row, uint32_t Column)
 {
 	assert(Row < Matrix->NumRows);
@@ -26,7 +32,7 @@ float CudaGetMatrixElement(matrix* Matrix, uint32_t ElementIndex)
 	// NOTE: made available if the Row, Column asserts in the standard 
 	// CONT: GetMatrixElement isn't needed. Mostly used for when you don't care
 	// CONT: if you have a row or column matrix
-	assert(ElementIndex < (Matrix->NumRows * Matrix->NumColumns));
+	assert(ElementIndex < CudaGetMatrixArrayCount(Matrix));
 	float* Element = Matrix->Data + ElementIndex;
 	return *Element;
 }
@@ -47,7 +53,7 @@ void CudaSetMatrixElement(
 	matrix* Matrix, uint32_t ElementIndex, float Value
 )
 {
-	assert(ElementIndex < (Matrix->NumRows * Matrix->NumColumns));
+	assert(ElementIndex < CudaGetMatrixArrayCount(Matrix));
 	float* Element = Matrix->Data + ElementIndex;
 	*Element = Value;
 }
@@ -173,9 +179,8 @@ void CudaMatrixMultCore(
 )
 {
 	uint32_t CommonDim = M1->NumColumns;
-	uint32_t ResultRows = Result->NumRows;
 	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = ResultRows * ResultColumns;
+	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -214,7 +219,7 @@ void CudaMatrixMult(matrix* M1, matrix* M2, matrix* Result)
 	uint32_t Device = 0;
 	int BlockSize = GetBlockSize(Device);
 	int NumBlocks = GetNumBlocks(
-		Result->NumRows * Result->NumColumns, BlockSize, Device
+		GetMatrixArrayCount(Result), BlockSize, Device
 	);
 	CudaMatrixMultThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
@@ -287,9 +292,7 @@ void CudaMatrixAddCore(
 	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
-	uint32_t ResultRows = Result->NumRows;
-	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = ResultRows * ResultColumns;
+	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -327,7 +330,7 @@ void CudaMatrixAdd(matrix* M1, matrix* M2, matrix* Result)
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
 	uint32_t NumBlocks = GetNumBlocks(
-		M1->NumRows * M1->NumColumns, BlockSize, Device
+		GetMatrixArrayCount(M1), BlockSize, Device
 	);
 	CudaMatrixAddThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
@@ -339,9 +342,8 @@ void CudaMatrixMultM1TransposeCore(
 )
 {
 	uint32_t CommonDim = M1->NumRows;
-	uint32_t ResultRows = Result->NumRows;
 	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = ResultRows * ResultColumns;
+	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -382,7 +384,7 @@ void CudaMatrixMultM1Transpose(matrix* M1, matrix* M2, matrix* Result)
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
 	uint32_t NumBlocks = GetNumBlocks(
-		Result->NumRows * Result->NumColumns, BlockSize, Device
+		GetMatrixArrayCount(Result), BlockSize, Device
 	);
 	CudaMatrixMultM1TransposeThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
@@ -394,9 +396,8 @@ void CudaMatrixMultM2TransposeCore(
 )
 {
 	uint32_t CommonDim = M1->NumColumns;
-	uint32_t ResultRows = Result->NumRows;
 	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = ResultRows * ResultColumns;
+	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -440,7 +441,7 @@ void CudaMatrixMultM2Transpose(matrix* M1, matrix* M2, matrix* Result)
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
 	uint32_t NumBlocks = GetNumBlocks(
-		Result->NumRows * Result->NumColumns, BlockSize, Device
+		GetMatrixArrayCount(Result), BlockSize, Device
 	);
 	CudaMatrixMultM2TransposeThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
@@ -452,9 +453,8 @@ void CudaMatrixMultM1M2TransposeCore(
 )
 {
 	uint32_t CommonDim = M1->NumRows;
-	uint32_t ResultRows = Result->NumRows;
 	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = ResultRows * ResultColumns;
+	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -496,7 +496,7 @@ void CudaMatrixMultM1M2Transpose(matrix* M1, matrix* M2, matrix* Result)
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
 	uint32_t NumBlocks = GetNumBlocks(
-		Result->NumRows * Result->NumColumns, BlockSize, Device
+		GetMatrixArrayCount(Result), BlockSize, Device
 	);
 	CudaMatrixMultM1M2TransposeThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
@@ -507,13 +507,19 @@ void CudaMatrixScalarMultCore(
 	float Scalar, matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
-	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Column = 0; Column < M1->NumColumns; Column++)
-		{
-			float NewValue = Scalar * CudaGetMatrixElement(M1, Row, Column);
-			CudaSetMatrixElement(Result, Row, Column, NewValue);
-		}
+		float NewValue = Scalar * CudaGetMatrixElement(M1, ResultIndex);		
+		CudaSetMatrixElement(
+			Result,
+			ResultIndex,
+			NewValue
+		);
 	}
 }
 
@@ -533,7 +539,9 @@ void CudaMatrixScalarMult(float Scalar, matrix* M1, matrix* Result)
 {
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, Device);
+	uint32_t NumBlocks = GetNumBlocks(
+		GetMatrixArrayCount(M1), BlockSize, Device
+	);
 	CudaMatrixScalarMultThread<<<NumBlocks, BlockSize>>>(Scalar, M1, Result);
 	cudaDeviceSynchronize();
 }
