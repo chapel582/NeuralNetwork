@@ -124,18 +124,6 @@ void CudaAllocMatrixMeanResult(matrix** Result, matrix* M1)
 	CudaAllocMatrix(Result, 1, M1->NumColumns);
 }
 
-// TODO: get cuda memory free in here
-// void FreeMatrixData(matrix Matrix)
-// {
-// 	free(Matrix.Data);
-// }
-
-// void FreeMatrix(matrix* Matrix)
-// {
-// 	FreeMatrixData(*Matrix);
-// 	free(Matrix);
-// }
-
 #define MAX_GPUS 1
 int GlobalMaxBlockSizeArray[MAX_GPUS];
 int GlobalMaxGridDimArray[MAX_GPUS];

@@ -21,7 +21,7 @@
 // TODO: combine this test program with CPU test
 
 __global__
-void RoundTripTest(matrix* M1, matrix* M2, matrix* Result)
+void RoundTripTestThread(matrix* M1, matrix* M2, matrix* Result)
 {	
 	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
 	uint32_t Stride = blockDim.x * gridDim.x;
@@ -33,22 +33,17 @@ void RoundTripTest(matrix* M1, matrix* M2, matrix* Result)
 	return;
 }
 
-__global__
-void ConsecutiveAdds(matrix* M1, matrix* M2, matrix* Result, int Iterations)
-{	
-	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
-	uint32_t Stride = blockDim.x * gridDim.x;
-	for(int Index = 0; Index < Iterations; Index++)
-	{
-		CudaMatrixAddCore(
-			M1, M2, Result, Start, Stride
-		);
-		__syncthreads();
-		CudaMatrixAddCore(Result, M2, M1, Start, Stride);
-		__syncthreads();
-		CudaMatrixAddCore(M1, M2, Result, Start, Stride);
-	}
-	return;
+float RoundTripTime(matrix* M1, matrix* M2, matrix* Result)
+{
+	int BlockSize = GetBlockSize(0);
+	int NumBlocks = GetNumBlocks(GetMatrixArrayCount(Result), BlockSize, 0);
+	int64_t StartClock = Win32GetWallClock();
+	RoundTripTestThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
+	cudaDeviceSynchronize();
+	int64_t EndClock = Win32GetWallClock(); 
+	float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+	
+	return Seconds;
 }
 
 int main(void)
@@ -58,6 +53,86 @@ int main(void)
 	LARGE_INTEGER PerformanceFrequency;
 	QueryPerformanceFrequency(&PerformanceFrequency);
 	GlobalPerformanceFrequency = PerformanceFrequency.QuadPart;
+
+	{
+		int Iterations = 10;
+		float Seconds = 0.0f;
+		for(int Index = 0; Index < Iterations; Index++)
+		{
+			matrix* M1;
+			uint32_t NumRows = 32;
+			uint32_t NumColumns = 2 << 10;
+			CudaAllocMatrix(&M1, NumRows, NumColumns);
+			FillMatrixConsecutive(M1);		
+	
+			matrix* M2;
+			NumRows = 2 << 10;
+			NumColumns = 64;
+			CudaAllocMatrix(&M2, NumRows, NumColumns);
+			FillMatrixConsecutive(M2);
+	
+			matrix* MultResult;
+			CudaAllocMultResultMatrix(&MultResult, M1, M2);
+	
+			Seconds += RoundTripTime(M1, M2, MultResult);
+			
+			CudaFreeMatrix(M1);
+			CudaFreeMatrix(M2);
+			CudaFreeMatrix(MultResult);
+		}
+		printf("Average round trip time (mult dims): %f\n", Seconds / Iterations);
+	}
+
+	{
+		int Iterations = 10;
+		float Seconds = 0.0f;
+		for(int Index = 0; Index < Iterations; Index++)
+		{
+			matrix* M1;
+			uint32_t NumRows = 64;
+			uint32_t NumColumns = 2 << 10;
+			CudaAllocMatrix(&M1, NumRows, NumColumns);
+			FillMatrixConsecutive(M1);		
+	
+			matrix* M2;
+			CudaAllocMatrix(&M2, NumRows, NumColumns);
+			FillMatrixConsecutive(M2);
+	
+			matrix* Result;
+			CudaAllocMatrix(&Result, NumRows, NumColumns);
+	
+			Seconds += RoundTripTime(M1, M2, Result);
+			
+			CudaFreeMatrix(M1);
+			CudaFreeMatrix(M2);
+			CudaFreeMatrix(Result);
+		}
+		printf(
+			"Average round trip time (add/sub dims): %f\n",
+			Seconds / Iterations
+		);
+	}
+
+	{
+		int Iterations = 10;
+		float Seconds = 0.0f;
+		for(int Index = 0; Index < Iterations; Index++)
+		{
+			matrix* M1;
+			uint32_t NumRows = 64;
+			uint32_t NumColumns = 2 << 10;
+			CudaAllocMatrix(&M1, NumRows, NumColumns);
+			FillMatrixConsecutive(M1);		
+		
+			Seconds += RoundTripTime(M1, M1, M1);
+			
+			CudaFreeMatrix(M1);
+		}
+		printf(
+			"Average round trip time (scalar mult dims): %f\n",
+			Seconds / Iterations
+		);
+	}
 
 	{
 		matrix* M1;
@@ -156,7 +231,7 @@ int main(void)
 		matrix* MultResult;
 		CudaAllocM1M2TransposeMultResultMatrix(&MultResult, M1, M2);
 
-		int64_t StartClock = Win32GetWallClock(); 
+		int64_t StartClock = Win32GetWallClock();
 		CudaMatrixMultM1M2Transpose(M1, M2, MultResult);
 		int64_t EndClock = Win32GetWallClock(); 
 		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
