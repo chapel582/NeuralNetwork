@@ -1767,6 +1767,7 @@ void CudaTrainNeuralNetCore(
 				}
 			}
 			LayerLink = PreviousLayer;
+			__syncthreads();
 		}
 
 		__syncthreads();
