@@ -969,211 +969,11 @@ void CudaReluBack(
 	cudaDeviceSynchronize();
 }
 
-struct mse_layer
-{
-	uint32_t MaxThreads;
-	float* SquaredErrorResults;
-};
-
-void CudaAllocMeanSquared(mse_layer** Result, uint32_t MaxThreads)
-{
-	cudaMallocManaged(Result, sizeof(mse_layer));
-	mse_layer* Layer = *Result;
-	*Layer = {};
-	Layer->MaxThreads = MaxThreads;
-	cudaMallocManaged(&Layer->SquaredErrorResults, MaxThreads * sizeof(float));
-}
-
-void FreeCudaMeanSquared(mse_layer* Layer)
-{
-	cudaFree(Layer->SquaredErrorResults);
-	cudaFree(Layer);
-}
-
-__device__
-void CudaMeanSquaredForwardCore(
-	float* SquaredErrorResults,
-	matrix* Predictions,
-	matrix* Labels,
-	uint32_t Start,
-	uint32_t Stride
-)
-{
-	float Result = 0.0f;
-	uint32_t NumResultElements = CudaGetMatrixArrayCount(Predictions);
-	for(
-		uint32_t ResultIndex = Start;
-		ResultIndex < NumResultElements;
-		ResultIndex += Stride
-	)
-	{
-		float Difference = (
-			CudaGetMatrixElement(Predictions, ResultIndex) - 
-			CudaGetMatrixElement(Labels, ResultIndex)
-		);
-		Result += Difference * Difference;
-	}
-	float* SquaredError = SquaredErrorResults + Start;
-	*SquaredError = Result;
-	__syncthreads();
-}
-
-__global__
-void CudaMeanSquaredForwardThread(
-	float* SquaredErrorResults, matrix* Predictions, matrix* Labels
-)
-{
-	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
-	uint32_t Stride = gridDim.x * blockDim.x;
-
-	CudaMeanSquaredForwardCore(
-		SquaredErrorResults, Predictions, Labels, Start, Stride
-	);		
-}
-
-__device__ 
-float CudaCalculateMse(mse_layer* Layer, matrix* Predictions)
-{
-	int NumThreadsRan; 
-	if(Layer->MaxThreads < Predictions->NumRows)
-	{
-		NumThreadsRan = Layer->MaxThreads;
-	}
-	else
-	{
-		NumThreadsRan = Predictions->NumRows;
-	}
-
-	float Sum = 0;
-	for(
-		uint32_t ThreadIndex = 0;
-		ThreadIndex < NumThreadsRan;
-		ThreadIndex++
-	)
-	{
-		float* SquaredError = Layer->SquaredErrorResults + ThreadIndex;
-		Sum += *SquaredError;
-	}
-
-	// NOTE: this definition of MSE with a two in the denominator helps cancel 
-	// CONT: out a two in the back derivation 
-	float Mean = Sum / (2 * Predictions->NumRows);
-	return Mean;
-}
-
-float CalculateMse(mse_layer* Layer, matrix* Predictions)
-{
-	int NumThreadsRan; 
-	if(Layer->MaxThreads < Predictions->NumRows)
-	{
-		NumThreadsRan = Layer->MaxThreads;
-	}
-	else
-	{
-		NumThreadsRan = Predictions->NumRows;
-	}
-
-	float Sum = 0;
-	for(
-		uint32_t ThreadIndex = 0;
-		ThreadIndex < NumThreadsRan;
-		ThreadIndex++
-	)
-	{
-		float* SquaredError = Layer->SquaredErrorResults + ThreadIndex;
-		Sum += *SquaredError;
-	}
-
-	// NOTE: this definition of MSE with a two in the denominator helps cancel 
-	// CONT: out a two in the back derivation 
-	float Mean = Sum / (2 * Predictions->NumRows);
-	return Mean;
-}
-
-float CudaMeanSquaredForward(
-	mse_layer* Layer, matrix* Predictions, matrix* Labels
-)
-{
-	int Device = 0;
-	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetNumBlocks(
-		GetMatrixArrayCount(Predictions), BlockSize, Device
-	);
-	assert((NumBlocks * BlockSize) <= Layer->MaxThreads);
-	memset(Layer->SquaredErrorResults, 0, Layer->MaxThreads * sizeof(float));
-	CudaMeanSquaredForwardThread<<<NumBlocks, BlockSize>>>(
-		Layer->SquaredErrorResults, Predictions, Labels
-	);
-	cudaDeviceSynchronize();
-
-	return CalculateMse(Layer, Predictions);
-}
-
-void CudaAllocMseTrainData(
-	mse_train_data** Result, uint32_t BatchSize, uint32_t PredictionDim
-)
-{
-	cudaMallocManaged(Result, sizeof(mse_train_data));
-	mse_train_data* TrainData = *Result;
-	*TrainData = {};
-	CudaInitMatrix(&TrainData->LayerGradient, BatchSize, PredictionDim);
-}
-
-void CudaFreeMseTrainData(mse_train_data* TrainData)
-{
-	CudaFreeMatrixData(&TrainData->LayerGradient);
-	cudaFree(TrainData);
-}
-
-__device__
-void CudaMseBackCore(
-	matrix* Predictions,
-	matrix* Labels,
-	mse_train_data* TrainData,
-	uint32_t Start,
-	uint32_t Stride
-)
-{
-	matrix* LayerGradient = &TrainData->LayerGradient;
-	CudaMatrixSubtractCore(
-		Labels, Predictions, LayerGradient, Start, Stride
-	);
-	CudaMatrixScalarMultCore(
-		1.0f / Predictions->NumColumns,
-		LayerGradient,
-		LayerGradient,
-		Start,
-		Stride
-	);
-	__syncthreads();
-}
-
-__global__
-void CudaMseBackThread(
-	matrix* Predictions, matrix* Labels, mse_train_data* TrainData
-)
-{
-	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
-	uint32_t Stride = blockDim.x * gridDim.x;
-
-	CudaMseBackCore(Predictions, Labels, TrainData, Start, Stride);
-}
-
-void CudaMeanSquaredBack(
-	matrix* Predictions, matrix* Labels, mse_train_data* TrainData
-)
-{
-	int Device = 0;
-	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetNumBlocks(
-		GetMatrixArrayCount(&TrainData->LayerGradient), BlockSize, Device
-	);
-	CudaMseBackThread<<<NumBlocks, BlockSize>>>(Predictions, Labels, TrainData);
-	cudaDeviceSynchronize();
-}
-
 void CudaAllocNeuralNet(
-	neural_net** Result, uint32_t BatchSize, uint32_t InputDim
+	neural_net** Result,
+	uint32_t BatchSize,
+	uint32_t InputDim,
+	uint32_t CpuThreads
 )
 {
 	cudaMallocManaged(Result, sizeof(neural_net));
@@ -1181,6 +981,7 @@ void CudaAllocNeuralNet(
 	*NeuralNet = {};
 	NeuralNet->BatchSize = BatchSize;
 	NeuralNet->InputDim = InputDim;
+	AllocMatrixOpJobs((matrix_op_jobs**) &NeuralNet->MatrixOpJobs, CpuThreads);
 }
 
 uint32_t CudaAddLayerLink(neural_net* NeuralNet, layer_type LayerType)
@@ -1260,12 +1061,9 @@ void CudaAddRelu(neural_net* NeuralNet)
 	CudaAllocMatrix(&LayerLink->Output, NeuralNet->BatchSize, InputDim);
 }
 
-void CudaAddMeanSquared(neural_net* NeuralNet, uint32_t MaxThreads)
+void CudaAddMeanSquared(neural_net* NeuralNet)
 {
 	CudaAddLayerLink(NeuralNet, LayerType_Mse);
-	layer_link* LayerLink = NeuralNet->LastLink;
-
-	CudaAllocMeanSquared((mse_layer**) &LayerLink->Data, MaxThreads);
 }
 
 void CudaResizedNeuralNet(
@@ -1281,7 +1079,10 @@ void CudaResizedNeuralNet(
 	// CONT: loss after doing all the mini batches in an epoch. It's also a 
 	// CONT: slightly smaller memory profile
 
-	CudaAllocNeuralNet(Result, NewBatchSize, Source->InputDim);
+	matrix_op_jobs* MatrixOpJobs = Source->MatrixOpJobs;
+	CudaAllocNeuralNet(
+		Result, NewBatchSize, Source->InputDim, MatrixOpJobs->NumThreads
+	);
 	neural_net* NeuralNet = *Result;
 
 	layer_link* LayerLink = Source->FirstLink;
@@ -1320,10 +1121,7 @@ void CudaResizedNeuralNet(
 			}
 			case(LayerType_Mse):
 			{
-				CudaAddMeanSquared(
-					NeuralNet,
-					GetMaxNumBlocks(0) * GetBlockSize(0)
-				);
+				CudaAddMeanSquared(NeuralNet);
 				break;
 			}
 			default:
@@ -1335,18 +1133,33 @@ void CudaResizedNeuralNet(
 	}
 }
 
-__device__
-void CudaNeuralNetForwardCore(
+void CudaAllocMseTrainData(
+	mse_train_data** Result, uint32_t BatchSize, uint32_t PredictionDim
+)
+{
+	cudaMallocManaged(Result, sizeof(mse_train_data));
+	mse_train_data* TrainData = *Result;
+	*TrainData = {};
+	CudaInitMatrix(&TrainData->LayerGradient, BatchSize, PredictionDim);
+}
+
+void CudaFreeMseTrainData(mse_train_data* TrainData)
+{
+	CudaFreeMatrixData(&TrainData->LayerGradient);
+	cudaFree(TrainData);
+}
+
+void CudaNeuralNetForward(
 	neural_net* NeuralNet,
 	matrix* Inputs,
 	matrix* Labels,
 	matrix** Predictions,
-	uint32_t Start,
-	uint32_t Stride
+	float* LossResult
 )
 {
 	matrix* Outputs = NULL;
 	layer_link* LayerLink = NeuralNet->FirstLink;
+	float Loss = -1.0f;
 	for(
 		uint32_t LayerIndex = 0;
 		LayerIndex < NeuralNet->NumLayers;
@@ -1358,18 +1171,16 @@ void CudaNeuralNetForwardCore(
 		{
 			case(LayerType_Dense):
 			{
-				CudaDenseForwardCore(
+				CudaDenseForward(
 					Inputs,
 					(dense_layer*) LayerLink->Data,
-					Outputs,
-					Start,
-					Stride
+					Outputs
 				);
 				break;
 			}
 			case(LayerType_Relu):
 			{
-				CudaReluForwardCore(Inputs, Outputs, Start, Stride);
+				CudaReluForward(Inputs, Outputs);
 				break;
 			}
 			case(LayerType_Softmax):
@@ -1394,13 +1205,11 @@ void CudaNeuralNetForwardCore(
 				}
 				if(Labels != NULL)
 				{
-					mse_layer* MseLayer = (mse_layer*) LayerLink->Data;
-					CudaMeanSquaredForwardCore(
-						MseLayer->SquaredErrorResults,
+					matrix_op_jobs* MatrixOpJobs = NeuralNet->MatrixOpJobs;
+					Loss = MeanSquaredForward(
+						MatrixOpJobs,
 						Inputs,
-						Labels,
-						Start,
-						Stride
+						Labels
 					);
 				}
 				break;
@@ -1413,7 +1222,6 @@ void CudaNeuralNetForwardCore(
 		}
 		Inputs = Outputs;
 		LayerLink = LayerLink->Next;
-		__syncthreads();
 	}
 
 	if(Predictions != NULL && *Predictions == NULL)
@@ -1422,73 +1230,9 @@ void CudaNeuralNetForwardCore(
 		// CONT: predictions from
 		*Predictions = Outputs;
 	}
-}
-
-__global__
-void CudaNeuralNetForwardThread(
-	neural_net* NeuralNet,
-	matrix* Inputs,
-	matrix* Labels,
-	matrix** Predictions
-)
-{
-	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
-	uint32_t Stride = blockDim.x * gridDim.x;
-
-	CudaNeuralNetForwardCore(
-		NeuralNet,
-		Inputs,
-		Labels,
-		Predictions,
-		Start,
-		Stride
-	);
-}
-
-void CudaNeuralNetForward(
-	neural_net* NeuralNet,
-	matrix* Inputs,
-	matrix* Labels,
-	matrix** Predictions,
-	float* LossResult
-)
-{
-	// NOTE: *Predictions must be in cuda shared memory, since it is modified 
-	// CONT: by the device side
-	if(Predictions)
-	{
-		*Predictions = NULL;
-	}
-
-	int Device = 0;
-	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetMaxNumBlocks(Device);
-
-	CudaNeuralNetForwardThread<<<NumBlocks, BlockSize>>>(
-		NeuralNet,
-		Inputs,
-		Labels,
-		Predictions
-	);
-	cudaDeviceSynchronize();
-
 	if(LossResult)
 	{
-		layer_link* LayerLink = NeuralNet->LastLink;
-		switch(LayerLink->Type)
-		{
-			case(LayerType_Mse):
-			{
-				mse_layer* MseLayer = (mse_layer*) LayerLink->Data;
-				*LossResult = CalculateMse(MseLayer, *Predictions);
-				break;
-			}
-			default:
-			{
-				assert(false);
-				break;
-			}
-		}
+		*LossResult = Loss;
 	}
 }
 
@@ -1503,8 +1247,7 @@ void CudaAllocNeuralNetTrainer(
 	{
 		case(LayerType_Mse):
 		{
-			// TODO: figure out a better way to set up the max number of threads
-			CudaAddMeanSquared(NeuralNet, GetMaxNumBlocks(0) * GetBlockSize(0));
+			AddMeanSquared(NeuralNet);
 			break;
 		}
 		case(LayerType_CrossEntropy):
@@ -1621,58 +1364,38 @@ void CudaAllocNeuralNetTrainer(
 	CudaAllocMatrix(&Trainer->MiniBatchLabels, MiniBatchSize, OutputDim);
 }
 
-__device__
-void CudaTrainNeuralNetCore(
+void CudaTrainNeuralNet(
 	neural_net_trainer* Trainer,
 	neural_net* NeuralNet,
 	matrix* Inputs,
 	matrix* Labels,
 	uint32_t Epochs,
-	uint32_t Start,
-	uint32_t Stride,
+	bool ShouldInitDenseLayers = true,
 	bool PrintStatus = false
 )
 {
+	if(ShouldInitDenseLayers)
+	{
+		InitDenseLayers(NeuralNet);
+	}
+
+	matrix_op_jobs* MatrixOpJobs = (matrix_op_jobs*) NeuralNet->MatrixOpJobs;
 	layer_link* LayerLink;
 	float Loss = -1.0f;
 	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
 	{
 		matrix* Predictions = NULL;
-		CudaNeuralNetForwardCore(
+		CudaNeuralNetForward(
 			NeuralNet,
 			Inputs,
 			Labels,
 			&Predictions,
-			Start,
-			Stride
+			&Loss
 		);
-		__syncthreads();
-
-		if(Start == 0)
+		if(PrintStatus)
 		{
-			// NOTE: loss summation is single-threaded
-			layer_link* LayerLink = NeuralNet->LastLink;
-			switch(LayerLink->Type)
-			{
-				case(LayerType_Mse):
-				{
-					mse_layer* MseLayer = (mse_layer*) LayerLink->Data;
-					Loss = CudaCalculateMse(MseLayer, Predictions);
-					break;
-				}
-				// NOTE: can add more loss types here
-				default:
-				{
-					// TODO: error logging
-					break;
-				}
-			}
-			if(PrintStatus)
-			{
-				printf("Epoch %d Loss: %f\n", Epoch, Loss);
-			}
+			printf("Epoch %d Loss: %f\n", Epoch, Loss);
 		}
-		__syncthreads();
 
 		matrix* NextLayerGradient = NULL;
 		LayerLink = NeuralNet->LastLink;
@@ -1700,13 +1423,11 @@ void CudaTrainNeuralNetCore(
 					dense_layer_train_data* DenseTrain = (
 						(dense_layer_train_data*) TrainData
 					);
-					CudaDenseBackCore(
+					CudaDenseBack(
 						LayerInputs,
 						NextLayerGradient,
 						(dense_layer*) LayerLink->Data,
-						DenseTrain,
-						Start,
-						Stride
+						DenseTrain
 					);
 					NextLayerGradient = &DenseTrain->LayerGradient;
 					break;
@@ -1714,51 +1435,33 @@ void CudaTrainNeuralNetCore(
 				case(LayerType_Relu):
 				{
 					relu_train_data* ReluTrain = (relu_train_data*) TrainData;
-					matrix* LayerGradient = &ReluTrain->LayerGradient;
-					CudaReluBackCore(
+					CudaReluBack(
 						LayerInputs,
 						NextLayerGradient,
-						LayerGradient,
-						Start,
-						Stride
+						ReluTrain
 					);
-					NextLayerGradient = LayerGradient;
+					NextLayerGradient = &ReluTrain->LayerGradient;
 					break;
 				}
 				case(LayerType_Softmax):
 				{
-					// TODO: implement
-					// assert(false);
 					break;
 				}
 				case(LayerType_Mse):
 				{
 					mse_train_data* MseTrain = (mse_train_data*) TrainData;
 
-					CudaMseBackCore(
+					MeanSquaredBack(
+						MatrixOpJobs,
 						Predictions,
 						Labels,
-						MseTrain,
-						Start,
-						Stride
+						MseTrain
 					);
 					NextLayerGradient = &MseTrain->LayerGradient;
 					break;
 				}
 				case(LayerType_CrossEntropy):
-				{
-					// TODO: implement
-					// cross_entropy_softmax_train_data* XEntropyTrain = (
-					// 	(cross_entropy_softmax_train_data*) TrainData
-					// );
-
-					// CrossEntropySoftmaxBack(
-					// 	MatrixOpJobs,
-					// 	Predictions, 
-					// 	Labels,
-					// 	XEntropyTrain
-					// );
-					// NextLayerGradient = &XEntropyTrain->LayerGradient;
+				{					
 					break;
 				}
 				default:
@@ -1767,63 +1470,8 @@ void CudaTrainNeuralNetCore(
 				}
 			}
 			LayerLink = PreviousLayer;
-			__syncthreads();
 		}
-
-		__syncthreads();
 	}
-}
-
-__global__
-void CudaTrainNeuralNetThread(
-	neural_net_trainer* Trainer,
-	neural_net* NeuralNet,
-	matrix* Inputs,
-	matrix* Labels,
-	uint32_t Epochs
-)
-{
-	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
-	uint32_t Stride = blockDim.x * gridDim.x;
-	CudaTrainNeuralNetCore(
-		Trainer,
-		NeuralNet,
-		Inputs,
-		Labels,
-		Epochs,
-		Start,
-		Stride
-	);
-}
-
-cudaError_t CudaTrainNeuralNet(
-	neural_net_trainer* Trainer,
-	neural_net* NeuralNet,
-	matrix* Inputs,
-	matrix* Labels,
-	uint32_t Epochs,
-	bool ShouldInitDenseLayers = true,
-	bool PrintStatus = false
-)
-{
-	if(ShouldInitDenseLayers)
-	{
-		InitDenseLayers(NeuralNet);
-	}
-
-	// TODO: get maximum number of threads we'll need across all layers instead of just setting it by batch size
-	int Device = 0;
-	int BlockSize = GetBlockSize(Device);
-	int NumBlocks = GetMaxNumBlocks(Device);
-	CudaTrainNeuralNetThread<<<NumBlocks, BlockSize>>>(
-		Trainer,
-		NeuralNet,
-		Inputs,
-		Labels,
-		Epochs
-	);
-	cudaError_t Result = cudaDeviceSynchronize();
-	return Result;
 }
 
 float CudaTopOneAccuracy(
@@ -1906,9 +1554,6 @@ void CudaTrainNeuralNetMiniBatch(
 		InitDenseLayers(NeuralNet);
 	}
 
-	matrix** PredictionsPtr;
-	cudaMallocManaged(&PredictionsPtr, sizeof(matrix*));
-
 	int_shuffler IntShuffler = MakeIntShuffler(TrainingSamples);
 
 	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
@@ -1968,7 +1613,7 @@ void CudaTrainNeuralNetMiniBatch(
 			FullBatchNnViewer,
 			Inputs,
 			Labels,
-			PredictionsPtr,
+			NULL,
 			&Loss
 		);
 		float TrainingAccuracy = TopOneAccuracy(
@@ -1991,6 +1636,4 @@ void CudaTrainNeuralNetMiniBatch(
 			break;
 		}
 	}
-
-	cudaFree(PredictionsPtr);
 }

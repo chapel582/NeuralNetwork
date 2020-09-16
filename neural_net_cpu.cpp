@@ -73,23 +73,6 @@ void AllocMatrixMeanResult(matrix** Result, matrix* M1)
 	AllocMatrix(Result, 1, M1->NumColumns);
 }
 
-struct matrix_op_args
-{
-	float Float;
-	matrix* M1;
-	matrix* M2;
-	matrix* Result;
-	int Start;
-	int Stride;
-};
-
-struct matrix_op_jobs
-{
-	uint32_t NumThreads;
-	matrix_op_args* Args;
-	HANDLE* Handles;
-};
-
 void AllocMatrixOpJobs(matrix_op_jobs** Result, uint32_t NumThreads)
 {
 	matrix_op_jobs* Jobs = (matrix_op_jobs*) malloc(sizeof(matrix_op_jobs));
@@ -1096,9 +1079,7 @@ DWORD WINAPI MeanSquaredForwardThread(void* VoidArgs)
 }
 
 float MeanSquaredForward(
-	matrix_op_jobs* MatrixOpJobs,
-	matrix* Predictions,
-	matrix* Labels
+	matrix_op_jobs* MatrixOpJobs, matrix* Predictions, matrix* Labels
 )
 {
 	for(
@@ -1350,7 +1331,7 @@ void ResizedNeuralNet(
 	// CONT: loss after doing all the mini batches in an epoch. It's also a 
 	// CONT: slightly smaller memory profile
 
-	matrix_op_jobs* MatrixOpJobs = (matrix_op_jobs*) Source->MatrixOpJobs;
+	matrix_op_jobs* MatrixOpJobs = Source->MatrixOpJobs;
 	AllocNeuralNet(
 		Result,
 		NewBatchSize,

@@ -2,6 +2,9 @@
 
 #include "matrix.h"
 
+// TODO: Need to have a platform independent way of handling threads
+#include <windows.h>
+
 struct dense_layer
 {
 	/* NOTE: 
@@ -55,6 +58,22 @@ struct layer_link
 	layer_link* Previous;
 };
 
+struct matrix_op_args
+{
+	float Float;
+	matrix* M1;
+	matrix* M2;
+	matrix* Result;
+	int Start;
+	int Stride;
+};
+struct matrix_op_jobs
+{
+	uint32_t NumThreads;
+	matrix_op_args* Args;
+	HANDLE* Handles; // TODO: make this platform independent
+};
+
 struct neural_net
 {
 	uint32_t NumLayers;
@@ -64,7 +83,7 @@ struct neural_net
 	layer_link* LastLink;
 
 	// NOTE: op jobs if needed 
-	void* MatrixOpJobs;
+	matrix_op_jobs* MatrixOpJobs;
 };
 
 struct neural_net_trainer
@@ -76,6 +95,16 @@ struct neural_net_trainer
 };
 
 void InitDenseLayers(neural_net* NeuralNet);
-
+void AllocMatrixOpJobs(matrix_op_jobs** Result, uint32_t NumThreads);
+float MeanSquaredForward(
+	matrix_op_jobs* MatrixOpJobs, matrix* Predictions, matrix* Labels
+);
+void AddMeanSquared(neural_net* NeuralNet);
+void MeanSquaredBack(
+	matrix_op_jobs* MatrixOpJobs,
+	matrix* Predictions, 
+	matrix* Labels, 
+	mse_train_data* TrainData
+);
 #define NEURAL_NET_H
 #endif
