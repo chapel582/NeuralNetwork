@@ -383,15 +383,15 @@ int main(void)
 		CudaAllocMatrix(&NextLayerGradient, BatchSize, OutputDim);
 		FillMatrixConsecutive(NextLayerGradient);
 
-		// dense_layer_train_data* TrainData;
-		// CudaAllocDenseLayerTrain(&TrainData, DenseLayer, 1.0f, BatchSize);
-		// StartClock = Win32GetWallClock();
-		// CudaDenseBack(
-		// 	Inputs, NextLayerGradient, DenseLayer, TrainData
-		// );
-		// EndClock = Win32GetWallClock();
-		// Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
-		// printf("Dense back seconds: %f\n", Seconds);
+		dense_layer_train_data* TrainData;
+		CudaAllocDenseLayerTrain(&TrainData, DenseLayer, 1.0f, BatchSize);
+		StartClock = Win32GetWallClock();
+		CudaDenseBack(
+			Inputs, NextLayerGradient, DenseLayer, TrainData
+		);
+		EndClock = Win32GetWallClock();
+		Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("Dense back seconds: %f\n", Seconds);
 	}
 	// SECTION STOP: Dense forward and back performance
 }

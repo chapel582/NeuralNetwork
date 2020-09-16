@@ -134,6 +134,8 @@ void CudaInitDeviceProperties(uint32_t Device)
 	cudaDeviceGetAttribute(
 		&GlobalMaxBlockSizeArray[Device], cudaDevAttrMaxBlockDimX, Device
 	);
+
+	// TODO: this value seems to be either wrong or pointless
 	cudaDeviceGetAttribute(
 		&GlobalMaxGridDimArray[Device], cudaDevAttrMaxGridDimX, Device
 	);
@@ -821,7 +823,9 @@ void CudaDenseBack(
 {
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetMaxNumBlocks(Device);
+	uint32_t NumBlocks = GetNumBlocks(
+		GetMatrixArrayCount(&DenseLayer->Weights), BlockSize, Device
+	);
 	CudaDenseBackThread<<<NumBlocks, BlockSize>>>(
 		Inputs,
 		NextLayerGradient,
