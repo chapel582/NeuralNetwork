@@ -978,6 +978,12 @@ void CudaAllocMeanSquared(mse_layer** Result, uint32_t MaxThreads)
 	cudaMallocManaged(&Layer->SquaredErrorResults, MaxThreads * sizeof(float));
 }
 
+void FreeCudaMeanSquared(mse_layer* Layer)
+{
+	cudaFree(Layer->SquaredErrorResults);
+	cudaFree(Layer);
+}
+
 __device__
 void CudaMeanSquaredForwardCore(
 	float* SquaredErrorResults,
@@ -988,16 +994,18 @@ void CudaMeanSquaredForwardCore(
 )
 {
 	float Result = 0.0f;
-	for(uint32_t Row = Start; Row < Predictions->NumRows; Row += Stride)
+	uint32_t NumResultElements = CudaGetMatrixArrayCount(Predictions);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Col = 0; Col < Predictions->NumColumns; Col++)
-		{
-			float Difference = (
-				CudaGetMatrixElement(Predictions, Row, Col) - 
-				CudaGetMatrixElement(Labels, Row, Col)
-			);
-			Result += Difference * Difference;
-		}
+		float Difference = (
+			CudaGetMatrixElement(Predictions, ResultIndex) - 
+			CudaGetMatrixElement(Labels, ResultIndex)
+		);
+		Result += Difference * Difference;
 	}
 	float* SquaredError = SquaredErrorResults + Start;
 	*SquaredError = Result;
@@ -1081,8 +1089,10 @@ float CudaMeanSquaredForward(
 {
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize, Device);
-	assert((NumBlocks * BlockSize) < Layer->MaxThreads);
+	uint32_t NumBlocks = GetNumBlocks(
+		GetMatrixArrayCount(Predictions), BlockSize, Device
+	);
+	assert((NumBlocks * BlockSize) <= Layer->MaxThreads);
 	memset(Layer->SquaredErrorResults, 0, Layer->MaxThreads * sizeof(float));
 	CudaMeanSquaredForwardThread<<<NumBlocks, BlockSize>>>(
 		Layer->SquaredErrorResults, Predictions, Labels
@@ -1146,7 +1156,9 @@ void CudaMeanSquaredBack(
 {
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetNumBlocks(Predictions->NumRows, BlockSize, Device);
+	uint32_t NumBlocks = GetNumBlocks(
+		GetMatrixArrayCount(Predictions), BlockSize, Device
+	);
 	CudaMseBackThread<<<NumBlocks, BlockSize>>>(Predictions, Labels, TrainData);
 	cudaDeviceSynchronize();
 }
@@ -1179,14 +1191,14 @@ uint32_t CudaAddLayerLink(neural_net* NeuralNet, layer_type LayerType)
 	return InputDim;
 }
 
-// void FreeLayerLink(layer_link* LayerLink)
-// {
-// 	if(LayerLink->Output != NULL)
-// 	{
-// 		FreeMatrix(LayerLink->Output);
-// 	}
-// 	free(LayerLink);
-// }
+void FreeLayerLink(layer_link* LayerLink)
+{
+	if(LayerLink->Output != NULL)
+	{
+		CudaFreeMatrix(LayerLink->Output);
+	}
+	cudaFree(LayerLink);
+}
 
 void CudaAddDense(
 	neural_net* NeuralNet, uint32_t OutputDim, dense_layer* DenseLayer = NULL

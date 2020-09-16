@@ -468,45 +468,49 @@ int main(int argc, char* argv[])
 	}
 	// SECTION STOP: RELU Tests
 
-	// // SECTION START: MSE Test
-	// {
-	// 	uint32_t BatchSize = 8;
-	// 	uint32_t NumClasses = 4;
+	// SECTION START: MSE Test
+	{
+		uint32_t BatchSize = 8;
+		uint32_t NumClasses = 4;
 
-	// 	matrix* Predictions = NULL;
-	// 	CudaAllocMatrix(&Predictions, BatchSize, NumClasses);
-	// 	FillOneHotMatrix(Predictions);
+		matrix* Predictions = NULL;
+		CudaAllocMatrix(&Predictions, BatchSize, NumClasses);
+		FillOneHotMatrix(Predictions);
 		
-	// 	matrix* Labels = NULL; 
-	// 	CudaAllocMatrix(&Labels, BatchSize, NumClasses);
-	// 	FillOneHotMatrix(Labels);
+		matrix* Labels = NULL; 
+		CudaAllocMatrix(&Labels, BatchSize, NumClasses);
+		FillOneHotMatrix(Labels);
 
-	// 	mse_layer* MseLayer = NULL;
-	// 	CudaAllocMeanSquared(&MseLayer, 1 << 14);
+		mse_layer* MseLayer = NULL;
+		int BlockSize = GetBlockSize(0);
+		int NumBlocks = GetNumBlocks(
+			GetMatrixArrayCount(Predictions), BlockSize, 0
+		);
+		CudaAllocMeanSquared(&MseLayer, NumBlocks * BlockSize);
 
-	// 	float Loss = CudaMeanSquaredForward(MseLayer, Predictions, Labels);
-	// 	TestFloatResult(
-	// 		Loss,
-	// 		FilePathBuffer,
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaMSELoss",
-	// 		EndianString
-	// 	);
+		float Loss = CudaMeanSquaredForward(MseLayer, Predictions, Labels);
+		TestFloatResult(
+			Loss,
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaMSELoss",
+			EndianString
+		);
 
-	// 	mse_train_data* TrainData = NULL;
-	// 	CudaAllocMseTrainData(&TrainData, BatchSize, NumClasses);
-	// 	CudaMeanSquaredBack(Predictions, Labels, TrainData);
-	// 	TestMatrixResult(
-	// 		&TrainData->LayerGradient,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaMSEBackOK",
-	// 		EndianString
-	// 	);
-	// }
-	// // SECTION STOP: MSE Test
+		mse_train_data* TrainData = NULL;
+		CudaAllocMseTrainData(&TrainData, BatchSize, NumClasses);
+		CudaMeanSquaredBack(Predictions, Labels, TrainData);
+		TestMatrixResult(
+			&TrainData->LayerGradient,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaMSEBackOK",
+			EndianString
+		);
+	}
+	// SECTION STOP: MSE Test
 
 	// TODO: maybe add another MSE test with non-zero resulting loss and 
 	// CONT: layer gradient
