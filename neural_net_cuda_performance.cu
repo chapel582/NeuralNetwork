@@ -167,6 +167,31 @@ int main(void)
 		CudaFreeMatrix(MultResult);
 	}
 
+	{
+		matrix* M1;
+		uint32_t NumRows = 32;
+		uint32_t NumColumns = 2 << 10;
+		CudaAllocMatrix(&M1, NumRows, NumColumns);
+		FillMatrixConsecutive(M1);		
+
+		matrix* M2;
+		CudaAllocMatrix(&M2, NumRows, NumColumns);
+		FillMatrixConsecutive(M2);
+
+		matrix* AddResult;
+		CudaAllocMatrix(&AddResult, NumRows, NumColumns);
+
+		int64_t StartClock = Win32GetWallClock(); 
+		CudaMatrixAdd(M1, M2, AddResult);
+		int64_t EndClock = Win32GetWallClock(); 
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("MatrixAdd seconds: %f\n", Seconds);
+		
+		CudaFreeMatrix(M1);
+		CudaFreeMatrix(M2);
+		CudaFreeMatrix(AddResult);
+	}
+
 	// // SECTION START: RoundTrip: M1, M2 high rows,columns test	
 	// {
 	// 	matrix* M1;

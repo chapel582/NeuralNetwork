@@ -437,17 +437,21 @@ void MatrixMultM1M2Transpose(
 
 void MatrixAddCore(matrix* M1, matrix* M2, matrix* Result, int Start, int Stride)
 {
-	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	uint32_t ResultRows = Result->NumRows;
+	uint32_t ResultColumns = Result->NumColumns;
+	uint32_t NumResultElements = ResultRows * ResultColumns;
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
-		{
-			SetMatrixElement(
-				Result,
-				Row,
-				Col,
-				GetMatrixElement(M1, Row, Col) + GetMatrixElement(M2, Row, Col)
-			);
-		}
+		SetMatrixElement(
+			Result,
+			ResultIndex,
+			GetMatrixElement(M1, ResultIndex) + 
+			GetMatrixElement(M2, ResultIndex)
+		);
 	}
 }
 

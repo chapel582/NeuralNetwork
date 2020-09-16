@@ -51,6 +51,18 @@ inline void SetMatrixElement(
 	*Element = Value;
 }
 
+inline void SetMatrixElement(
+	matrix* Matrix, uint32_t ElementIndex, float Value
+)
+{
+	// NOTE: made available if the Row, Column asserts in the standard 
+	// CONT: GetMatrixElement isn't needed. Mostly used for when you don't care
+	// CONT: if you have a row or column matrix
+	assert(ElementIndex < (Matrix->NumRows * Matrix->NumColumns));
+	float* Element = Matrix->Data + ElementIndex;
+	*Element = Value;
+}
+
 bool MatricesAreEquivalent(matrix* M1, matrix* M2);
 void SaveMatrix(matrix* Matrix, char* FilePath);
 bool LoadMatrix(matrix* Matrix, char* FilePath);
