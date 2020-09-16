@@ -135,10 +135,11 @@ void CudaInitDeviceProperties(uint32_t Device)
 		&GlobalMaxBlockSizeArray[Device], cudaDevAttrMaxBlockDimX, Device
 	);
 
-	// TODO: this value seems to be either wrong or pointless
-	cudaDeviceGetAttribute(
-		&GlobalMaxGridDimArray[Device], cudaDevAttrMaxGridDimX, Device
-	);
+	// TODO: the value returned seems to be either wrong or pointless
+	// cudaDeviceGetAttribute(
+	// 	&GlobalMaxGridDimArray[Device], cudaDevAttrMaxGridDimX, Device
+	// );
+	GlobalMaxGridDimArray[Device] = 128;
 }
 
 inline uint32_t GetBlockSize(uint32_t Device)
@@ -1450,7 +1451,7 @@ void CudaNeuralNetForward(
 
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize, Device);
+	uint32_t NumBlocks = GetMaxNumBlocks(Device);
 
 	CudaNeuralNetForwardThread<<<NumBlocks, BlockSize>>>(
 		NeuralNet,
