@@ -987,7 +987,6 @@ int main(int argc, char* argv[])
 			Predictions,
 			NULL
 		);
-		PrintMatrix(*Predictions);
 		TestMatrixResult(
 			*Predictions,
 			FilePathBuffer, 
@@ -1381,7 +1380,7 @@ int main(int argc, char* argv[])
 			Predictions,
 			NULL
 		);
-
+		
 		TestMatrixResult(
 			*Predictions,
 			FilePathBuffer, 
