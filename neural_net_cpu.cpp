@@ -819,24 +819,27 @@ DWORD WINAPI ReluBackThread(void* VoidArgs)
 	matrix* LayerGradient = Args->Result;
 	uint32_t Start = Args->Start;
 	uint32_t Stride = Args->Stride;
-	for(uint32_t Row = Start; Row < Inputs->NumRows; Row += Stride)
+	
+	uint32_t NumResultElements = GetMatrixArrayCount(LayerGradient);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Col = 0; Col < Inputs->NumColumns; Col++)
+		float LayerGradientElement;
+		float InputValue = GetMatrixElement(Inputs, ResultIndex);
+		if(InputValue <= 0)
 		{
-			float LayerGradientElement;
-			float InputValue = GetMatrixElement(Inputs, Row, Col);
-			if(InputValue <= 0)
-			{
-				LayerGradientElement = 0;
-			}
-			else
-			{
-				LayerGradientElement = GetMatrixElement(
-					NextLayerGradient, Row, Col
-				);
-			}
-			SetMatrixElement(LayerGradient, Row, Col, LayerGradientElement);
+			LayerGradientElement = 0;
 		}
+		else
+		{
+			LayerGradientElement = GetMatrixElement(
+				NextLayerGradient, ResultIndex
+			);
+		}
+		SetMatrixElement(LayerGradient, ResultIndex, LayerGradientElement);
 	}
 
 	return 0;
