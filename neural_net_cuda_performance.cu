@@ -6,6 +6,7 @@
 #include "matrix.h"
 
 #include "neural_net_cuda.cu"
+#include "neural_net_cpu.cpp"
 #include "performance.cpp"
 #include "neural_net.cpp"
 #include "matrix.cpp"

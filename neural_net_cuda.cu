@@ -4,6 +4,7 @@
 #include "int_shuffler.h"
 #include "neural_net.h"
 #include "matrix.h"
+#include "neural_net_cpu.h"
 
 #include <stdio.h>
 #include <stdint.h>
@@ -136,18 +137,18 @@ void CudaInitDeviceProperties(uint32_t Device)
 	);
 
 	// TODO: the value returned seems to be either wrong or pointless
-	// cudaDeviceGetAttribute(
-	// 	&GlobalMaxGridDimArray[Device], cudaDevAttrMaxGridDimX, Device
-	// );
-	GlobalMaxGridDimArray[Device] = 128;
+	cudaDeviceGetAttribute(
+		&GlobalMaxGridDimArray[Device], cudaDevAttrMaxGridDimX, Device
+	);
+	GlobalMaxGridDimArray[Device] = 64;
 }
 
-inline uint32_t GetBlockSize(uint32_t Device)
+uint32_t GetBlockSize(uint32_t Device)
 {
 	return GlobalMaxBlockSizeArray[Device];
 }
 
-inline uint32_t GetMaxNumBlocks(uint32_t Device)
+uint32_t GetMaxNumBlocks(uint32_t Device)
 {
 	return GlobalMaxGridDimArray[Device];
 }
@@ -691,6 +692,7 @@ void CudaDenseForwardCore(
 	CudaAddVectorToRowsCore(
 		Results, &DenseLayer->Bias, Results, Start, Stride
 	);
+	__syncthreads();
 }
 
 __global__
@@ -786,7 +788,7 @@ void CudaDenseBackCore(
 	
 	// NOTE: update weights
 	CudaMatrixAddCore(Weights, WeightsDelta, Weights, Start, Stride);
-	
+
 	// NOTE: calculate bias delta
 	matrix* Bias = &DenseLayer->Bias;
 	matrix* BiasDelta = &TrainData->BiasDelta;
@@ -797,6 +799,7 @@ void CudaDenseBackCore(
 
 	// NOTE: update bias
 	CudaMatrixAddCore(Bias, BiasDelta, Bias, Start, Stride);
+	__syncthreads();
 }
 
 __global__
@@ -876,6 +879,7 @@ void CudaReluForwardCore(
 		}
 		CudaSetMatrixElement(Result, ResultIndex, NewValue);
 	}
+	__syncthreads();
 }
 
 __global__
@@ -931,6 +935,7 @@ void CudaReluBackCore(
 		}
 		CudaSetMatrixElement(LayerGradient, ResultIndex, LayerGradientElement);
 	}
+	__syncthreads();
 }
 
 __global__
@@ -1010,6 +1015,7 @@ void CudaMeanSquaredForwardCore(
 	}
 	float* SquaredError = SquaredErrorResults + Start;
 	*SquaredError = Result;
+	__syncthreads();
 }
 
 __global__
@@ -1139,6 +1145,7 @@ void CudaMseBackCore(
 		Start,
 		Stride
 	);
+	__syncthreads();
 }
 
 __global__
@@ -1193,7 +1200,7 @@ uint32_t CudaAddLayerLink(neural_net* NeuralNet, layer_type LayerType)
 	return InputDim;
 }
 
-void FreeLayerLink(layer_link* LayerLink)
+void CudaFreeLayerLink(layer_link* LayerLink)
 {
 	if(LayerLink->Output != NULL)
 	{
@@ -1313,7 +1320,10 @@ void CudaResizedNeuralNet(
 			}
 			case(LayerType_Mse):
 			{
-				CudaAddMeanSquared(NeuralNet, 1 << 14);
+				CudaAddMeanSquared(
+					NeuralNet,
+					GetMaxNumBlocks(0) * GetBlockSize(0)
+				);
 				break;
 			}
 			default:
@@ -1403,6 +1413,7 @@ void CudaNeuralNetForwardCore(
 		}
 		Inputs = Outputs;
 		LayerLink = LayerLink->Next;
+		__syncthreads();
 	}
 
 	if(Predictions != NULL && *Predictions == NULL)
@@ -1493,7 +1504,7 @@ void CudaAllocNeuralNetTrainer(
 		case(LayerType_Mse):
 		{
 			// TODO: figure out a better way to set up the max number of threads
-			CudaAddMeanSquared(NeuralNet, 1 << 14);
+			CudaAddMeanSquared(NeuralNet, GetMaxNumBlocks(0) * GetBlockSize(0));
 			break;
 		}
 		case(LayerType_CrossEntropy):
@@ -1784,7 +1795,7 @@ void CudaTrainNeuralNetThread(
 	);
 }
 
-void CudaTrainNeuralNet(
+cudaError_t CudaTrainNeuralNet(
 	neural_net_trainer* Trainer,
 	neural_net* NeuralNet,
 	matrix* Inputs,
@@ -1802,7 +1813,7 @@ void CudaTrainNeuralNet(
 	// TODO: get maximum number of threads we'll need across all layers instead of just setting it by batch size
 	int Device = 0;
 	int BlockSize = GetBlockSize(Device);
-	int NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize, Device);
+	int NumBlocks = GetMaxNumBlocks(Device);
 	CudaTrainNeuralNetThread<<<NumBlocks, BlockSize>>>(
 		Trainer,
 		NeuralNet,
@@ -1810,17 +1821,33 @@ void CudaTrainNeuralNet(
 		Labels,
 		Epochs
 	);
-	cudaDeviceSynchronize();
+	cudaError_t Result = cudaDeviceSynchronize();
+	return Result;
 }
 
-float CudaTopOneAccuracy(neural_net* NeuralNet, matrix* Inputs, matrix* Labels)
+float CudaTopOneAccuracy(
+	neural_net* NeuralNet,
+	matrix* Inputs,
+	matrix* Labels,
+	matrix** PredictionsPtr = NULL
+)
 {
-	matrix* Predictions = NULL;
+	bool FreePredictionsPtr;
+	if(PredictionsPtr == NULL)
+	{
+		cudaMallocManaged(&PredictionsPtr, sizeof(matrix*));
+	}
+	else
+	{
+		FreePredictionsPtr = false;
+	}
+
+	matrix* Predictions = *PredictionsPtr;
 	CudaNeuralNetForward(
 		NeuralNet,
 		Inputs,
 		Labels,
-		&Predictions,
+		PredictionsPtr,
 		NULL
 	);
 	
@@ -1841,6 +1868,11 @@ float CudaTopOneAccuracy(neural_net* NeuralNet, matrix* Inputs, matrix* Labels)
 		{
 			TotalCorrect++;
 		}
+	}
+
+	if(FreePredictionsPtr)
+	{
+		cudaFree(PredictionsPtr);
 	}
 
 	return (float) TotalCorrect / (float) Predictions->NumRows;
@@ -1872,6 +1904,9 @@ void CudaTrainNeuralNetMiniBatch(
 	{
 		InitDenseLayers(NeuralNet);
 	}
+
+	matrix** PredictionsPtr;
+	cudaMallocManaged(&PredictionsPtr, sizeof(matrix*));
 
 	int_shuffler IntShuffler = MakeIntShuffler(TrainingSamples);
 
@@ -1932,10 +1967,10 @@ void CudaTrainNeuralNetMiniBatch(
 			FullBatchNnViewer,
 			Inputs,
 			Labels,
-			NULL,
+			PredictionsPtr,
 			&Loss
 		);
-		float TrainingAccuracy = CudaTopOneAccuracy(
+		float TrainingAccuracy = TopOneAccuracy(
 			FullBatchNnViewer, Inputs, Labels
 		);
 		if(PrintStatus)
@@ -1955,4 +1990,6 @@ void CudaTrainNeuralNetMiniBatch(
 			break;
 		}
 	}
+
+	cudaFree(PredictionsPtr);
 }

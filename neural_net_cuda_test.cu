@@ -6,10 +6,12 @@
 #include "matrix.h"
 
 #include "neural_net_cuda.cu"
+#include "neural_net_cpu.cpp"
 #include "neural_net.cpp"
 #include "matrix.cpp"
 #include "mnist_test.cpp"
 #include "matrix_test.cpp"
+#include "performance.cpp"
 
 #include <stdio.h>
 #include <stdint.h>
@@ -680,865 +682,873 @@ int main(int argc, char* argv[])
 	}
 	// SECTION STOP: Negative Relu NN test
 
-	// // SECTION START: One neuron training
-	// {
-	// 	uint32_t BatchSize = 5;
-	// 	uint32_t InputDim = 1;
+	// SECTION START: One neuron training
+	{
+		uint32_t BatchSize = 5;
+		uint32_t InputDim = 1;
 
-	// 	matrix* Inputs = NULL;
-	// 	CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-	// 	FillMatrixConsecutive(Inputs);
+		matrix* Inputs = NULL;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
 
-	// 	neural_net* NeuralNet = NULL;
-	// 	CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-	// 	CudaAddDense(NeuralNet, 1);
+		neural_net* NeuralNet = NULL;
+		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
+		CudaAddDense(NeuralNet, 1);
 
-	// 	// NOTE: should be equivalent to 2x + 1
-	// 	matrix* Labels;
-	// 	CudaAllocMatrix(&Labels, BatchSize, 1);
-	// 	SetMatrixElement(Labels, 0, 0, 3);
-	// 	SetMatrixElement(Labels, 1, 0, 5);
-	// 	SetMatrixElement(Labels, 2, 0, 7);
-	// 	SetMatrixElement(Labels, 3, 0, 9);
-	// 	SetMatrixElement(Labels, 4, 0, 11);
+		// NOTE: should be equivalent to 2x + 1
+		matrix* Labels;
+		CudaAllocMatrix(&Labels, BatchSize, 1);
+		SetMatrixElement(Labels, 0, 0, 3);
+		SetMatrixElement(Labels, 1, 0, 5);
+		SetMatrixElement(Labels, 2, 0, 7);
+		SetMatrixElement(Labels, 3, 0, 9);
+		SetMatrixElement(Labels, 4, 0, 11);
 
-	// 	neural_net_trainer* Trainer;
-	// 	CudaAllocNeuralNetTrainer(
-	// 		&Trainer,
-	// 		NeuralNet,
-	// 		0.01f,
-	// 		LayerType_Mse
-	// 	);
+		neural_net_trainer* Trainer;
+		CudaAllocNeuralNetTrainer(
+			&Trainer,
+			NeuralNet,
+			0.01f,
+			LayerType_Mse
+		);
 
-	// 	CudaTrainNeuralNet(
-	// 		Trainer,
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		Labels,
-	// 		100
-	// 	);
+		CudaTrainNeuralNet(
+			Trainer,
+			NeuralNet,
+			Inputs,
+			Labels,
+			100
+		);
 
-	// 	dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
+		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
 
-	// 	TestMatrixResult(
-	// 		&DenseLayer->Weights,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaOneNeuronNN_Weights",
-	// 		EndianString
-	// 	);
-	// 	TestMatrixResult(
-	// 		&DenseLayer->Bias,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaOneNeuronNN_Bias",
-	// 		EndianString
-	// 	);
-	// }
-	// // SECTION STOP: One neuron training
+		TestMatrixResult(
+			&DenseLayer->Weights,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaOneNeuronNN_Weights",
+			EndianString
+		);
+		TestMatrixResult(
+			&DenseLayer->Bias,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaOneNeuronNN_Bias",
+			EndianString
+		);
+	}
+	// SECTION STOP: One neuron training
 
-	// // SECTION START: More one neuron training
-	// {
-	// 	uint32_t BatchSize = 6;
-	// 	uint32_t InputDim = 1;
+	// SECTION START: More one neuron training
+	{
+		uint32_t BatchSize = 6;
+		uint32_t InputDim = 1;
 
-	// 	matrix* Inputs;
-	// 	CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-	// 	FillMatrixConsecutive(Inputs);
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
 
-	// 	neural_net* NeuralNet = NULL;
-	// 	CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-	// 	CudaAddDense(NeuralNet, 1);
+		neural_net* NeuralNet = NULL;
+		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
+		CudaAddDense(NeuralNet, 1);
 
-	// 	// NOTE: should be equivalent to 5x - 3
-	// 	matrix* Labels;
-	// 	CudaAllocMatrix(&Labels, BatchSize, 1);
-	// 	SetMatrixElement(Labels, 0, 0, 2);
-	// 	SetMatrixElement(Labels, 1, 0, 7);
-	// 	SetMatrixElement(Labels, 2, 0, 12);
-	// 	SetMatrixElement(Labels, 3, 0, 17);
-	// 	SetMatrixElement(Labels, 4, 0, 22);
-	// 	SetMatrixElement(Labels, 5, 0, 27);
+		// NOTE: should be equivalent to 5x - 3
+		matrix* Labels;
+		CudaAllocMatrix(&Labels, BatchSize, 1);
+		SetMatrixElement(Labels, 0, 0, 2);
+		SetMatrixElement(Labels, 1, 0, 7);
+		SetMatrixElement(Labels, 2, 0, 12);
+		SetMatrixElement(Labels, 3, 0, 17);
+		SetMatrixElement(Labels, 4, 0, 22);
+		SetMatrixElement(Labels, 5, 0, 27);
 
-	// 	neural_net_trainer* Trainer;
-	// 	CudaAllocNeuralNetTrainer(
-	// 		&Trainer,
-	// 		NeuralNet,
-	// 		0.01f,
-	// 		LayerType_Mse
-	// 	);
+		neural_net_trainer* Trainer;
+		CudaAllocNeuralNetTrainer(
+			&Trainer,
+			NeuralNet,
+			0.01f,
+			LayerType_Mse
+		);
 
-	// 	CudaTrainNeuralNet(
-	// 		Trainer,
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		Labels,
-	// 		1000
-	// 	);
+		CudaTrainNeuralNet(
+			Trainer,
+			NeuralNet,
+			Inputs,
+			Labels,
+			1000
+		);
 
-	// 	dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-	// 	TestMatrixResult(
-	// 		&DenseLayer->Weights,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaOneNeuronNN_Weights_2",
-	// 		EndianString
-	// 	);
-	// 	TestMatrixResult(
-	// 		&DenseLayer->Bias,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaOneNeuronNN_Bias_2",
-	// 		EndianString
-	// 	);
-	// }
-	// // SECTION STOP: More one neuron training
+		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
+		TestMatrixResult(
+			&DenseLayer->Weights,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaOneNeuronNN_Weights_2",
+			EndianString
+		);
+		TestMatrixResult(
+			&DenseLayer->Bias,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaOneNeuronNN_Bias_2",
+			EndianString
+		);
+	}
+	// SECTION STOP: More one neuron training
 
-	// // SECTION START: two neuron training
-	// {
-	// 	uint32_t BatchSize = 2;
-	// 	uint32_t InputDim = 2;
-	// 	uint32_t OutputDim = 2;
+	// SECTION START: two neuron training
+	{
+		uint32_t BatchSize = 2;
+		uint32_t InputDim = 2;
+		uint32_t OutputDim = 2;
 
-	// 	matrix* Inputs;
-	// 	CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-	// 	FillMatrixConsecutive(Inputs);
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
 
-	// 	neural_net* NeuralNet = NULL;
-	// 	CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-	// 	CudaAddDense(NeuralNet, OutputDim);
+		neural_net* NeuralNet = NULL;
+		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
+		CudaAddDense(NeuralNet, OutputDim);
 
-	// 	// NOTE: Labels set up to converge weight to 
-	// 	/* CONT: 
-	// 		W = 
-	// 			| 2 3 |
-	// 			| 4 5 |
-	// 		b = 
-	// 			| 1 2 |
-	// 	*/
-	// 	matrix* Labels;
-	// 	CudaAllocMatrix(&Labels, BatchSize, OutputDim);
+		// NOTE: Labels set up to converge weight to 
+		/* CONT: 
+			W = 
+				| 2 3 |
+				| 4 5 |
+			b = 
+				| 1 2 |
+		*/
+		matrix* Labels;
+		CudaAllocMatrix(&Labels, BatchSize, OutputDim);
 		
-	// 	SetMatrixElement(Labels, 0, 0, 11);
-	// 	SetMatrixElement(Labels, 0, 1, 15);
+		SetMatrixElement(Labels, 0, 0, 11);
+		SetMatrixElement(Labels, 0, 1, 15);
 
-	// 	SetMatrixElement(Labels, 1, 0, 23);
-	// 	SetMatrixElement(Labels, 1, 1, 31);
+		SetMatrixElement(Labels, 1, 0, 23);
+		SetMatrixElement(Labels, 1, 1, 31);
 
-	// 	neural_net_trainer* Trainer;
-	// 	CudaAllocNeuralNetTrainer(
-	// 		&Trainer,
-	// 		NeuralNet,
-	// 		0.01f,
-	// 		LayerType_Mse
-	// 	);
+		neural_net_trainer* Trainer;
+		CudaAllocNeuralNetTrainer(
+			&Trainer,
+			NeuralNet,
+			0.01f,
+			LayerType_Mse
+		);
 
-	// 	CudaTrainNeuralNet(
-	// 		Trainer,
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		Labels,
-	// 		100
-	// 	);
+		CudaTrainNeuralNet(
+			Trainer,
+			NeuralNet,
+			Inputs,
+			Labels,
+			100
+		);
 
-	// 	dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
+		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
 
-	// 	TestMatrixResult(
-	// 		&DenseLayer->Weights,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaTwoNeuronNN_Weights",
-	// 		EndianString
-	// 	);
-	// 	TestMatrixResult(
-	// 		&DenseLayer->Bias,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaTwoNeuronNN_Bias",
-	// 		EndianString
-	// 	);
-	// }
-	// // SECTION STOP: two neuron training
+		TestMatrixResult(
+			&DenseLayer->Weights,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaTwoNeuronNN_Weights",
+			EndianString
+		);
+		TestMatrixResult(
+			&DenseLayer->Bias,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaTwoNeuronNN_Bias",
+			EndianString
+		);
+	}
+	// SECTION STOP: two neuron training
 
-	// // SECTION START: one layer training and prediction
-	// {
-	// 	uint32_t BatchSize = 2;
-	// 	uint32_t InputDim = 2;
-	// 	uint32_t OutputDim = 2;
+	// SECTION START: one layer training and prediction
+	{
+		uint32_t BatchSize = 2;
+		uint32_t InputDim = 2;
+		uint32_t OutputDim = 2;
 
-	// 	matrix* Inputs;
-	// 	CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-	// 	FillMatrixConsecutive(Inputs);
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
 
-	// 	neural_net* NeuralNet = NULL;
-	// 	CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-	// 	CudaAddDense(NeuralNet, OutputDim);
+		neural_net* NeuralNet = NULL;
+		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
+		CudaAddDense(NeuralNet, OutputDim);
 
-	// 	// NOTE: Labels set up to converge weight to 
-	// 	/* CONT: 
-	// 		W = 
-	// 			| 2 3 |
-	// 			| 4 5 |
-	// 		b = 
-	// 			| 1 2 |
-	// 	*/
-	// 	matrix* Labels;
-	// 	CudaAllocMatrix(&Labels, BatchSize, OutputDim);
+		// NOTE: Labels set up to converge weight to 
+		/* CONT: 
+			W = 
+				| 2 3 |
+				| 4 5 |
+			b = 
+				| 1 2 |
+		*/
+		matrix* Labels;
+		CudaAllocMatrix(&Labels, BatchSize, OutputDim);
 		
-	// 	SetMatrixElement(Labels, 0, 0, 11);
-	// 	SetMatrixElement(Labels, 0, 1, 15);
+		SetMatrixElement(Labels, 0, 0, 11);
+		SetMatrixElement(Labels, 0, 1, 15);
 
-	// 	SetMatrixElement(Labels, 1, 0, 23);
-	// 	SetMatrixElement(Labels, 1, 1, 31);
+		SetMatrixElement(Labels, 1, 0, 23);
+		SetMatrixElement(Labels, 1, 1, 31);
 
-	// 	neural_net_trainer* Trainer;
-	// 	CudaAllocNeuralNetTrainer(
-	// 		&Trainer,
-	// 		NeuralNet,
-	// 		0.01f,
-	// 		LayerType_Mse
-	// 	);
+		neural_net_trainer* Trainer;
+		CudaAllocNeuralNetTrainer(
+			&Trainer,
+			NeuralNet,
+			0.01f,
+			LayerType_Mse
+		);
 
-	// 	CudaTrainNeuralNet(
-	// 		Trainer,
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		Labels,
-	// 		100
-	// 	);
+		CudaTrainNeuralNet(
+			Trainer,
+			NeuralNet,
+			Inputs,
+			Labels,
+			100
+		);
 
-	// 	matrix** Predictions;
-	// 	cudaMallocManaged(&Predictions, sizeof(matrix*));
-	// 	CudaNeuralNetForward(
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		NULL,
-	// 		Predictions,
-	// 		NULL
-	// 	);
+		matrix** Predictions;
+		cudaMallocManaged(&Predictions, sizeof(matrix*));
+		CudaNeuralNetForward(
+			NeuralNet,
+			Inputs,
+			NULL,
+			Predictions,
+			NULL
+		);
 
-	// 	TestMatrixResult(
-	// 		*Predictions,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaLinearOneLayerPrediction",
-	// 		EndianString
-	// 	);
-	// }
-	// // SECTION STOP: one layer training and prediction
+		TestMatrixResult(
+			*Predictions,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaLinearOneLayerPrediction",
+			EndianString
+		);
+	}
+	// SECTION STOP: one layer training and prediction
 
-	// // SECTION START: two layer training and prediction
-	// {
-	// 	uint32_t BatchSize = 2;
-	// 	uint32_t InputDim = 2;
-	// 	uint32_t HiddenDim = 32;
-	// 	uint32_t OutputDim = 2;
+	// TODO: see if you can get this test to pass
+	// SECTION START: two layer training and prediction
+	{
+		uint32_t BatchSize = 2;
+		uint32_t InputDim = 2;
+		uint32_t HiddenDim = 32;
+		uint32_t OutputDim = 2;
 
-	// 	matrix* Inputs;
-	// 	CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-	// 	FillMatrixConsecutive(Inputs);
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
 
-	// 	neural_net* NeuralNet = NULL;
-	// 	CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-	// 	CudaAddDense(NeuralNet, HiddenDim);
-	// 	CudaAddDense(NeuralNet, OutputDim);
+		neural_net* NeuralNet = NULL;
+		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
+		CudaAddDense(NeuralNet, HiddenDim);
+		CudaAddDense(NeuralNet, OutputDim);
 
-	// 	matrix* Labels;
-	// 	CudaAllocMatrix(&Labels, BatchSize, OutputDim);
+		matrix* Labels;
+		CudaAllocMatrix(&Labels, BatchSize, OutputDim);
 		
-	// 	SetMatrixElement(Labels, 0, 0, 11);
-	// 	SetMatrixElement(Labels, 0, 1, 15);
+		SetMatrixElement(Labels, 0, 0, 11);
+		SetMatrixElement(Labels, 0, 1, 15);
 
-	// 	SetMatrixElement(Labels, 1, 0, 23);
-	// 	SetMatrixElement(Labels, 1, 1, 31);
+		SetMatrixElement(Labels, 1, 0, 23);
+		SetMatrixElement(Labels, 1, 1, 31);
 
-	// 	neural_net_trainer* Trainer;
-	// 	CudaAllocNeuralNetTrainer(
-	// 		&Trainer,
-	// 		NeuralNet,
-	// 		0.01f,
-	// 		LayerType_Mse
-	// 	);
+		neural_net_trainer* Trainer;
+		CudaAllocNeuralNetTrainer(
+			&Trainer,
+			NeuralNet,
+			0.01f,
+			LayerType_Mse
+		);
 
-	// 	CudaTrainNeuralNet(
-	// 		Trainer,
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		Labels,
-	// 		100
-	// 	);
+		CudaTrainNeuralNet(
+			Trainer,
+			NeuralNet,
+			Inputs,
+			Labels,
+			100
+		);
 
-	// 	matrix** Predictions;
-	// 	cudaMallocManaged(&Predictions, sizeof(matrix*));
-	// 	CudaNeuralNetForward(
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		NULL,
-	// 		Predictions,
-	// 		NULL
-	// 	);
+		matrix** Predictions;
+		cudaMallocManaged(&Predictions, sizeof(matrix*));
+		CudaNeuralNetForward(
+			NeuralNet,
+			Inputs,
+			NULL,
+			Predictions,
+			NULL
+		);
+		PrintMatrix(*Predictions);
+		TestMatrixResult(
+			*Predictions,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaLinearTwoLayerPrediction",
+			EndianString
+		);
+	}
+	// SECTION STOP: two layer training and prediction
 
-	// 	TestMatrixResult(
-	// 		*Predictions,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaLinearTwoLayerPrediction",
-	// 		EndianString
-	// 	);
-	// }
-	// // SECTION STOP: two layer training and prediction
+	// SECTION START: XOR Forward
+	{
+		uint32_t BatchSize = 4;
+		uint32_t InputDim = 2;
+		uint32_t HiddenDim = 8;
+		uint32_t OutputDim = 1;
 
-	// // SECTION START: XOR Forward
-	// {
-	// 	uint32_t BatchSize = 4;
-	// 	uint32_t InputDim = 2;
-	// 	uint32_t HiddenDim = 8;
-	// 	uint32_t OutputDim = 1;
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		SetMatrixElement(Inputs, 0, 0, 0.0f);
+		SetMatrixElement(Inputs, 0, 1, 0.0f);
 
-	// 	matrix* Inputs;
-	// 	CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-	// 	SetMatrixElement(Inputs, 0, 0, 0.0f);
-	// 	SetMatrixElement(Inputs, 0, 1, 0.0f);
+		SetMatrixElement(Inputs, 1, 0, 0.0f);
+		SetMatrixElement(Inputs, 1, 1, 1.0f);
 
-	// 	SetMatrixElement(Inputs, 1, 0, 0.0f);
-	// 	SetMatrixElement(Inputs, 1, 1, 1.0f);
+		SetMatrixElement(Inputs, 2, 0, 1.0f);
+		SetMatrixElement(Inputs, 2, 1, 0.0f);
 
-	// 	SetMatrixElement(Inputs, 2, 0, 1.0f);
-	// 	SetMatrixElement(Inputs, 2, 1, 0.0f);
+		SetMatrixElement(Inputs, 3, 0, 1.0f);
+		SetMatrixElement(Inputs, 3, 1, 1.0f);
 
-	// 	SetMatrixElement(Inputs, 3, 0, 1.0f);
-	// 	SetMatrixElement(Inputs, 3, 1, 1.0f);
+		neural_net* NeuralNet = NULL;
+		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
+		CudaAddDense(NeuralNet, HiddenDim);
+		CudaAddRelu(NeuralNet);
+		CudaAddDense(NeuralNet, OutputDim);
 
-	// 	neural_net* NeuralNet = NULL;
-	// 	CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-	// 	CudaAddDense(NeuralNet, HiddenDim);
-	// 	CudaAddRelu(NeuralNet);
-	// 	CudaAddDense(NeuralNet, OutputDim);
+		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
+		float FirstLayerWeights[] = {
+			-0.6014779f,
+			0.6651714f,
+			-0.33612493f,
+			0.7284934f,
+			0.49762666f,
+			-0.33008203f,
+			-0.66281337f,
+			-0.7124146f,
+			0.6431314f,
+			0.6383204f,
+			-0.44230828f,
+			-0.7284539f,
+			0.7563155f,
+			0.29757506f,
+			-0.2068302f,
+			-0.04522699f
+		};
+		memcpy(
+			DenseLayer->Weights.Data,
+			FirstLayerWeights,
+			sizeof(FirstLayerWeights)
+		);
+		float FirstLayerBias[] = {
+			-3.8563503e-06f,
+			-6.3853890e-01f,
+			0.0f,
+			-6.8683788e-05f,
+			6.1795981e-05f,
+			-2.9789597e-01f,
+			0.0f,
+			0.0f
+		};
+		memcpy(
+			DenseLayer->Bias.Data,
+			FirstLayerBias,
+			sizeof(FirstLayerBias)
+		);
 
-	// 	dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-	// 	float FirstLayerWeights[] = {
-	// 		-0.6014779f,
-	// 		0.6651714f,
-	// 		-0.33612493f,
-	// 		0.7284934f,
-	// 		0.49762666f,
-	// 		-0.33008203f,
-	// 		-0.66281337f,
-	// 		-0.7124146f,
-	// 		0.6431314f,
-	// 		0.6383204f,
-	// 		-0.44230828f,
-	// 		-0.7284539f,
-	// 		0.7563155f,
-	// 		0.29757506f,
-	// 		-0.2068302f,
-	// 		-0.04522699f
-	// 	};
-	// 	memcpy(
-	// 		DenseLayer->Weights.Data,
-	// 		FirstLayerWeights,
-	// 		sizeof(FirstLayerWeights)
-	// 	);
-	// 	float FirstLayerBias[] = {
-	// 		-3.8563503e-06f,
-	// 		-6.3853890e-01f,
-	// 		0.0f,
-	// 		-6.8683788e-05f,
-	// 		6.1795981e-05f,
-	// 		-2.9789597e-01f,
-	// 		0.0f,
-	// 		0.0f
-	// 	};
-	// 	memcpy(
-	// 		DenseLayer->Bias.Data,
-	// 		FirstLayerBias,
-	// 		sizeof(FirstLayerBias)
-	// 	);
-
-	// 	dense_layer* SecondDenseLayer = (dense_layer*) (
-	// 		NeuralNet->FirstLink->Next->Next->Data
-	// 	);
-	// 	float SecondLayerWeights[] = {
-	// 		0.7474555f,
-	// 		-1.215051f,
-	// 		-0.55316067f,
-	// 		0.9348931f,
-	// 		0.5940272f,
-	// 		-0.53985476f,
-	// 		-0.42657337f,
-	// 		-0.5814253f
-	// 	};
-	// 	memcpy(
-	// 		SecondDenseLayer->Weights.Data,
-	// 		SecondLayerWeights,
-	// 		sizeof(SecondLayerWeights)
-	// 	);
-	// 	float SecondLayerBias[] = {0.0f};
-	// 	memcpy(
-	// 		SecondDenseLayer->Bias.Data,
-	// 		SecondLayerBias,
-	// 		sizeof(SecondLayerBias)
-	// 	);
+		dense_layer* SecondDenseLayer = (dense_layer*) (
+			NeuralNet->FirstLink->Next->Next->Data
+		);
+		float SecondLayerWeights[] = {
+			0.7474555f,
+			-1.215051f,
+			-0.55316067f,
+			0.9348931f,
+			0.5940272f,
+			-0.53985476f,
+			-0.42657337f,
+			-0.5814253f
+		};
+		memcpy(
+			SecondDenseLayer->Weights.Data,
+			SecondLayerWeights,
+			sizeof(SecondLayerWeights)
+		);
+		float SecondLayerBias[] = {0.0f};
+		memcpy(
+			SecondDenseLayer->Bias.Data,
+			SecondLayerBias,
+			sizeof(SecondLayerBias)
+		);
 		
-	// 	matrix** Predictions;
-	// 	cudaMallocManaged(&Predictions, sizeof(matrix*));
-	// 	CudaNeuralNetForward(
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		NULL,
-	// 		Predictions,
-	// 		NULL
-	// 	);
+		matrix** Predictions;
+		cudaMallocManaged(&Predictions, sizeof(matrix*));
+		CudaNeuralNetForward(
+			NeuralNet,
+			Inputs,
+			NULL,
+			Predictions,
+			NULL
+		);
 
-	// 	TestMatrixResult(
-	// 		*Predictions,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaGoodXorForward",
-	// 		EndianString
-	// 	);
-	// }
-	// // SECTION STOP: XOR Forward
+		TestMatrixResult(
+			*Predictions,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaGoodXorForward",
+			EndianString
+		);
+	}
+	// SECTION STOP: XOR Forward
 
-	// // SECTION START: forward XOR with good initial weights
-	// {
-	// 	// NOTE: in keras, 8 neurons and one dense layer + RELU seems 
-	// 	// CONT: to work. no momentum needed for high-dimensional stuff 
-	// 	// CONT: 2000 epochs were needed too
-	// 	uint32_t BatchSize = 4;
-	// 	uint32_t InputDim = 2;
-	// 	uint32_t HiddenDim = 8;
-	// 	uint32_t OutputDim = 1;
+	// SECTION START: forward XOR with good initial weights
+	{
+		// NOTE: in keras, 8 neurons and one dense layer + RELU seems 
+		// CONT: to work. no momentum needed for high-dimensional stuff 
+		// CONT: 2000 epochs were needed too
+		uint32_t BatchSize = 4;
+		uint32_t InputDim = 2;
+		uint32_t HiddenDim = 8;
+		uint32_t OutputDim = 1;
 
-	// 	matrix* Inputs;
-	// 	CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-	// 	SetMatrixElement(Inputs, 0, 0, 0.0f);
-	// 	SetMatrixElement(Inputs, 0, 1, 0.0f);
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		SetMatrixElement(Inputs, 0, 0, 0.0f);
+		SetMatrixElement(Inputs, 0, 1, 0.0f);
 
-	// 	SetMatrixElement(Inputs, 1, 0, 0.0f);
-	// 	SetMatrixElement(Inputs, 1, 1, 1.0f);
+		SetMatrixElement(Inputs, 1, 0, 0.0f);
+		SetMatrixElement(Inputs, 1, 1, 1.0f);
 
-	// 	SetMatrixElement(Inputs, 2, 0, 1.0f);
-	// 	SetMatrixElement(Inputs, 2, 1, 0.0f);
+		SetMatrixElement(Inputs, 2, 0, 1.0f);
+		SetMatrixElement(Inputs, 2, 1, 0.0f);
 
-	// 	SetMatrixElement(Inputs, 3, 0, 1.0f);
-	// 	SetMatrixElement(Inputs, 3, 1, 1.0f);
+		SetMatrixElement(Inputs, 3, 0, 1.0f);
+		SetMatrixElement(Inputs, 3, 1, 1.0f);
 
-	// 	neural_net* NeuralNet = NULL;
-	// 	CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-	// 	CudaAddDense(NeuralNet, HiddenDim);
-	// 	CudaAddRelu(NeuralNet);
-	// 	CudaAddDense(NeuralNet, OutputDim);
+		neural_net* NeuralNet = NULL;
+		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
+		CudaAddDense(NeuralNet, HiddenDim);
+		CudaAddRelu(NeuralNet);
+		CudaAddDense(NeuralNet, OutputDim);
 
-	// 	matrix* Labels;
-	// 	CudaAllocMatrix(&Labels, BatchSize, OutputDim);
+		matrix* Labels;
+		CudaAllocMatrix(&Labels, BatchSize, OutputDim);
 		
-	// 	// NOTE: this is set up to converge to a xor function
-	// 	SetMatrixElement(Labels, 0, 0, 0.0f);
-	// 	SetMatrixElement(Labels, 1, 0, 1.0f);
-	// 	SetMatrixElement(Labels, 2, 0, 1.0f);
-	// 	SetMatrixElement(Labels, 3, 0, 0.0f);
+		// NOTE: this is set up to converge to a xor function
+		SetMatrixElement(Labels, 0, 0, 0.0f);
+		SetMatrixElement(Labels, 1, 0, 1.0f);
+		SetMatrixElement(Labels, 2, 0, 1.0f);
+		SetMatrixElement(Labels, 3, 0, 0.0f);
 
-	// 	neural_net_trainer* Trainer;
-	// 	CudaAllocNeuralNetTrainer(
-	// 		&Trainer,
-	// 		NeuralNet,
-	// 		0.1f,
-	// 		LayerType_Mse
-	// 	);
+		neural_net_trainer* Trainer;
+		CudaAllocNeuralNetTrainer(
+			&Trainer,
+			NeuralNet,
+			0.1f,
+			LayerType_Mse
+		);
 
-	// 	dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-	// 	float FirstLayerWeights[] = {
-	// 		-0.6014779f,
-	// 		0.6651714f,
-	// 		-0.33612493f,
-	// 		0.7284934f,
-	// 		0.49762666f,
-	// 		-0.33008203f,
-	// 		-0.66281337f,
-	// 		-0.7124146f,
-	// 		0.6431314f,
-	// 		0.6383204f,
-	// 		-0.44230828f,
-	// 		-0.7284539f,
-	// 		0.7563155f,
-	// 		0.29757506f,
-	// 		-0.2068302f,
-	// 		-0.04522699f
-	// 	};
-	// 	memcpy(
-	// 		DenseLayer->Weights.Data,
-	// 		FirstLayerWeights,
-	// 		sizeof(FirstLayerWeights)
-	// 	);
-	// 	float FirstLayerBias[] = {
-	// 		-3.8563503e-06f,
-	// 		-6.3853890e-01f,
-	// 		0.0f,
-	// 		-6.8683788e-05f,
-	// 		6.1795981e-05f,
-	// 		-2.9789597e-01f,
-	// 		0.0f,
-	// 		0.0f
-	// 	};
-	// 	memcpy(
-	// 		DenseLayer->Bias.Data,
-	// 		FirstLayerBias,
-	// 		sizeof(FirstLayerBias)
-	// 	);
+		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
+		float FirstLayerWeights[] = {
+			-0.6014779f,
+			0.6651714f,
+			-0.33612493f,
+			0.7284934f,
+			0.49762666f,
+			-0.33008203f,
+			-0.66281337f,
+			-0.7124146f,
+			0.6431314f,
+			0.6383204f,
+			-0.44230828f,
+			-0.7284539f,
+			0.7563155f,
+			0.29757506f,
+			-0.2068302f,
+			-0.04522699f
+		};
+		memcpy(
+			DenseLayer->Weights.Data,
+			FirstLayerWeights,
+			sizeof(FirstLayerWeights)
+		);
+		float FirstLayerBias[] = {
+			-3.8563503e-06f,
+			-6.3853890e-01f,
+			0.0f,
+			-6.8683788e-05f,
+			6.1795981e-05f,
+			-2.9789597e-01f,
+			0.0f,
+			0.0f
+		};
+		memcpy(
+			DenseLayer->Bias.Data,
+			FirstLayerBias,
+			sizeof(FirstLayerBias)
+		);
 
-	// 	dense_layer* SecondDenseLayer = (dense_layer*) (
-	// 		NeuralNet->FirstLink->Next->Next->Data
-	// 	);
-	// 	float SecondLayerWeights[] = {
-	// 		0.7474555f,
-	// 		-1.215051f,
-	// 		-0.55316067f,
-	// 		0.9348931f,
-	// 		0.5940272f,
-	// 		-0.53985476f,
-	// 		-0.42657337f,
-	// 		-0.5814253f
-	// 	};
-	// 	memcpy(
-	// 		SecondDenseLayer->Weights.Data,
-	// 		SecondLayerWeights,
-	// 		sizeof(SecondLayerWeights)
-	// 	);
-	// 	float SecondLayerBias[] = {0.0f};
-	// 	memcpy(
-	// 		SecondDenseLayer->Bias.Data,
-	// 		SecondLayerBias,
-	// 		sizeof(SecondLayerBias)
-	// 	);
+		dense_layer* SecondDenseLayer = (dense_layer*) (
+			NeuralNet->FirstLink->Next->Next->Data
+		);
+		float SecondLayerWeights[] = {
+			0.7474555f,
+			-1.215051f,
+			-0.55316067f,
+			0.9348931f,
+			0.5940272f,
+			-0.53985476f,
+			-0.42657337f,
+			-0.5814253f
+		};
+		memcpy(
+			SecondDenseLayer->Weights.Data,
+			SecondLayerWeights,
+			sizeof(SecondLayerWeights)
+		);
+		float SecondLayerBias[] = {0.0f};
+		memcpy(
+			SecondDenseLayer->Bias.Data,
+			SecondLayerBias,
+			sizeof(SecondLayerBias)
+		);
 
-	// 	CudaTrainNeuralNet(
-	// 		Trainer,
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		Labels,
-	// 		100,
-	// 		false
-	// 	);
+		CudaTrainNeuralNet(
+			Trainer,
+			NeuralNet,
+			Inputs,
+			Labels,
+			100,
+			false
+		);
 
-	// 	matrix** Predictions;
-	// 	cudaMallocManaged(&Predictions, sizeof(matrix*));
-	// 	CudaNeuralNetForward(
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		NULL,
-	// 		Predictions,
-	// 		NULL
-	// 	);
+		matrix** Predictions;
+		cudaMallocManaged(&Predictions, sizeof(matrix*));
+		CudaNeuralNetForward(
+			NeuralNet,
+			Inputs,
+			NULL,
+			Predictions,
+			NULL
+		);
 		
-	// 	TestMatrixResult(
-	// 		*Predictions,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaForwardXor_StaticTraining",
-	// 		EndianString
-	// 	);
-	// }
-	// // SECTION STOP: forward XOR with good initial weights
+		TestMatrixResult(
+			*Predictions,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaForwardXor_StaticTraining",
+			EndianString
+		);
+	}
+	// SECTION STOP: forward XOR with good initial weights
 
-	// // SECTION START: forward XOR with close to perfect initial weights
-	// {
-	// 	// NOTE: in keras, 8 neurons and one dense layer + RELU seems 
-	// 	// CONT: to work. no momentum needed for high-dimensional stuff 
-	// 	// CONT: 2000 epochs were needed too
-	// 	uint32_t BatchSize = 4;
-	// 	uint32_t InputDim = 2;
-	// 	uint32_t HiddenDim = 8;
-	// 	uint32_t OutputDim = 1;
+	// SECTION START: forward XOR with close to perfect initial weights
+	{
+		// NOTE: in keras, 8 neurons and one dense layer + RELU seems 
+		// CONT: to work. no momentum needed for high-dimensional stuff 
+		// CONT: 2000 epochs were needed too
+		uint32_t BatchSize = 4;
+		uint32_t InputDim = 2;
+		uint32_t HiddenDim = 8;
+		uint32_t OutputDim = 1;
 
-	// 	matrix* Inputs;
-	// 	CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-	// 	SetMatrixElement(Inputs, 0, 0, 0.0f);
-	// 	SetMatrixElement(Inputs, 0, 1, 0.0f);
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		SetMatrixElement(Inputs, 0, 0, 0.0f);
+		SetMatrixElement(Inputs, 0, 1, 0.0f);
 
-	// 	SetMatrixElement(Inputs, 1, 0, 0.0f);
-	// 	SetMatrixElement(Inputs, 1, 1, 1.0f);
+		SetMatrixElement(Inputs, 1, 0, 0.0f);
+		SetMatrixElement(Inputs, 1, 1, 1.0f);
 
-	// 	SetMatrixElement(Inputs, 2, 0, 1.0f);
-	// 	SetMatrixElement(Inputs, 2, 1, 0.0f);
+		SetMatrixElement(Inputs, 2, 0, 1.0f);
+		SetMatrixElement(Inputs, 2, 1, 0.0f);
 
-	// 	SetMatrixElement(Inputs, 3, 0, 1.0f);
-	// 	SetMatrixElement(Inputs, 3, 1, 1.0f);
+		SetMatrixElement(Inputs, 3, 0, 1.0f);
+		SetMatrixElement(Inputs, 3, 1, 1.0f);
 
-	// 	neural_net* NeuralNet = NULL;
-	// 	CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
-	// 	CudaAddDense(NeuralNet, HiddenDim);
-	// 	CudaAddRelu(NeuralNet);
-	// 	CudaAddDense(NeuralNet, OutputDim);
+		neural_net* NeuralNet = NULL;
+		CudaAllocNeuralNet(&NeuralNet, BatchSize, InputDim);
+		CudaAddDense(NeuralNet, HiddenDim);
+		CudaAddRelu(NeuralNet);
+		CudaAddDense(NeuralNet, OutputDim);
 
-	// 	matrix* Labels;
-	// 	CudaAllocMatrix(&Labels, BatchSize, OutputDim);
+		matrix* Labels;
+		CudaAllocMatrix(&Labels, BatchSize, OutputDim);
 		
-	// 	// NOTE: this is set up to converge to a xor function
-	// 	SetMatrixElement(Labels, 0, 0, 0.0f);
-	// 	SetMatrixElement(Labels, 1, 0, 1.0f);
-	// 	SetMatrixElement(Labels, 2, 0, 1.0f);
-	// 	SetMatrixElement(Labels, 3, 0, 0.0f);
+		// NOTE: this is set up to converge to a xor function
+		SetMatrixElement(Labels, 0, 0, 0.0f);
+		SetMatrixElement(Labels, 1, 0, 1.0f);
+		SetMatrixElement(Labels, 2, 0, 1.0f);
+		SetMatrixElement(Labels, 3, 0, 0.0f);
 
-	// 	neural_net_trainer* Trainer;
-	// 	CudaAllocNeuralNetTrainer(
-	// 		&Trainer, NeuralNet, 0.1f, LayerType_Mse
-	// 	);
+		neural_net_trainer* Trainer;
+		CudaAllocNeuralNetTrainer(
+			&Trainer, NeuralNet, 0.1f, LayerType_Mse
+		);
 
-	// 	dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
-	// 	float FirstLayerWeights[] = {
-	// 		-0.6f,
-	// 		0.7f,
-	// 		-0.3f,
-	// 		0.7f,
-	// 		0.5f,
-	// 		-0.3f,
-	// 		-0.7f,
-	// 		-0.7f,
-	// 		0.6f,
-	// 		0.6f,
-	// 		-0.4f,
-	// 		-0.7f,
-	// 		0.8f,
-	// 		0.3f,
-	// 		-0.2f,
-	// 		0.0f
-	// 	};
-	// 	memcpy(
-	// 		DenseLayer->Weights.Data,
-	// 		FirstLayerWeights,
-	// 		sizeof(FirstLayerWeights)
-	// 	);
-	// 	float FirstLayerBias[] = {
-	// 		-4e-06f,
-	// 		-6e-01f,
-	// 		0.0f,
-	// 		-7e-05f,
-	// 		6e-05f,
-	// 		-3e-01f,
-	// 		0.0f,
-	// 		0.0f
-	// 	};
-	// 	memcpy(
-	// 		DenseLayer->Bias.Data,
-	// 		FirstLayerBias,
-	// 		sizeof(FirstLayerBias)
-	// 	);
+		dense_layer* DenseLayer = (dense_layer*) NeuralNet->FirstLink->Data;
+		float FirstLayerWeights[] = {
+			-0.6f,
+			0.7f,
+			-0.3f,
+			0.7f,
+			0.5f,
+			-0.3f,
+			-0.7f,
+			-0.7f,
+			0.6f,
+			0.6f,
+			-0.4f,
+			-0.7f,
+			0.8f,
+			0.3f,
+			-0.2f,
+			0.0f
+		};
+		memcpy(
+			DenseLayer->Weights.Data,
+			FirstLayerWeights,
+			sizeof(FirstLayerWeights)
+		);
+		float FirstLayerBias[] = {
+			-4e-06f,
+			-6e-01f,
+			0.0f,
+			-7e-05f,
+			6e-05f,
+			-3e-01f,
+			0.0f,
+			0.0f
+		};
+		memcpy(
+			DenseLayer->Bias.Data,
+			FirstLayerBias,
+			sizeof(FirstLayerBias)
+		);
 
-	// 	dense_layer* SecondDenseLayer = (dense_layer*) (
-	// 		NeuralNet->FirstLink->Next->Next->Data
-	// 	);
-	// 	float SecondLayerWeights[] = {
-	// 		0.7f,
-	// 		-1.0f,
-	// 		-0.6f,
-	// 		0.9f,
-	// 		0.6f,
-	// 		-0.5f,
-	// 		-0.4f,
-	// 		-0.6f
-	// 	};
-	// 	memcpy(
-	// 		SecondDenseLayer->Weights.Data,
-	// 		SecondLayerWeights,
-	// 		sizeof(SecondLayerWeights)
-	// 	);
-	// 	float SecondLayerBias[] = {0.0f};
-	// 	memcpy(
-	// 		SecondDenseLayer->Bias.Data,
-	// 		SecondLayerBias,
-	// 		sizeof(SecondLayerBias)
-	// 	);
+		dense_layer* SecondDenseLayer = (dense_layer*) (
+			NeuralNet->FirstLink->Next->Next->Data
+		);
+		float SecondLayerWeights[] = {
+			0.7f,
+			-1.0f,
+			-0.6f,
+			0.9f,
+			0.6f,
+			-0.5f,
+			-0.4f,
+			-0.6f
+		};
+		memcpy(
+			SecondDenseLayer->Weights.Data,
+			SecondLayerWeights,
+			sizeof(SecondLayerWeights)
+		);
+		float SecondLayerBias[] = {0.0f};
+		memcpy(
+			SecondDenseLayer->Bias.Data,
+			SecondLayerBias,
+			sizeof(SecondLayerBias)
+		);
 
-	// 	CudaTrainNeuralNet(
-	// 		Trainer,
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		Labels,
-	// 		100,
-	// 		false
-	// 	);
+		CudaTrainNeuralNet(
+			Trainer,
+			NeuralNet,
+			Inputs,
+			Labels,
+			100,
+			false
+		);
 
-	// 	matrix** Predictions;
-	// 	cudaMallocManaged(&Predictions, sizeof(matrix*));
-	// 	CudaNeuralNetForward(
-	// 		NeuralNet,
-	// 		Inputs,
-	// 		NULL,
-	// 		Predictions,
-	// 		NULL
-	// 	);
+		matrix** Predictions;
+		cudaMallocManaged(&Predictions, sizeof(matrix*));
+		CudaNeuralNetForward(
+			NeuralNet,
+			Inputs,
+			NULL,
+			Predictions,
+			NULL
+		);
 
-	// 	TestMatrixResult(
-	// 		*Predictions,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaForwardXor_Convergence",
-	// 		EndianString
-	// 	);
-	// }
-	// // SECTION STOP: forward XOR with close to perfect initial weights
+		TestMatrixResult(
+			*Predictions,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaForwardXor_Convergence",
+			EndianString
+		);
+	}
+	// SECTION STOP: forward XOR with close to perfect initial weights
 
-	// // SECTION START: MNIST with MSE
-	// printf("Starting MNIST training\n");
-	// {
-	// 	uint32_t MiniBatchSize = 32;
-	// 	uint32_t TrainingSamples = 2048;
-	// 	uint32_t TestSamples = 100;
-	// 	uint32_t Epochs = 100;
-	// 	float TrainingAccuracyThreshold = 0.99f;
-	// 	float LossThreshold = -0.00001f;
-	// 	float LearningRate = 0.1f;
-	// 	bool PrintTraining = true;
+	// SECTION START: MNIST with MSE
+	printf("Starting MNIST training\n");
+	{
+		uint32_t MiniBatchSize = 32;
+		uint32_t TrainingSamples = 2048;
+		uint32_t TestSamples = 100;
+		uint32_t Epochs = 100;
+		float TrainingAccuracyThreshold = 0.99f;
+		float LossThreshold = -0.00001f;
+		float LearningRate = 0.1f;
+		bool PrintTraining = true;
 
-	// 	snprintf(
-	// 		FilePathBuffer,
-	// 		sizeof(FilePathBuffer),
-	// 		"%s/%s",
-	// 		TestDataDirectory,
-	// 		"mnist_train.csv"
-	// 	);
-	// 	matrix* Data;
-	// 	matrix* Labels;
-	// 	CudaAllocMatrix(&Data, TrainingSamples, MNIST_DATA_SIZE);
-	// 	MatrixClear(Data);
-	// 	CudaAllocMatrix(&Labels, TrainingSamples, MNIST_CLASS_COUNT);
-	// 	MatrixClear(Labels);
-	// 	int Result = LoadMnistDigitCsv(
-	// 		Data, Labels, TrainingSamples, FilePathBuffer
-	// 	);
+		snprintf(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			"%s/%s",
+			TestDataDirectory,
+			"mnist_train.csv"
+		);
+		matrix* Data;
+		matrix* Labels;
+		CudaAllocMatrix(&Data, TrainingSamples, MNIST_DATA_SIZE);
+		MatrixClear(Data);
+		CudaAllocMatrix(&Labels, TrainingSamples, MNIST_CLASS_COUNT);
+		MatrixClear(Labels);
+		int Result = LoadMnistDigitCsv(
+			Data, Labels, TrainingSamples, FilePathBuffer
+		);
 
-	// 	if(Result == 0)
-	// 	{
-	// 		neural_net* NeuralNet = NULL;
-	// 		CudaAllocNeuralNet(&NeuralNet, MiniBatchSize, MNIST_DATA_SIZE);
-	// 		uint32_t HiddenDim = 64;
-	// 		CudaAddDense(NeuralNet, HiddenDim);
-	// 		CudaAddRelu(NeuralNet);
-	// 		CudaAddDense(NeuralNet, HiddenDim);
-	// 		CudaAddRelu(NeuralNet);
-	// 		CudaAddDense(NeuralNet, MNIST_CLASS_COUNT);
+		if(Result == 0)
+		{
+			neural_net* NeuralNet = NULL;
+			CudaAllocNeuralNet(&NeuralNet, MiniBatchSize, MNIST_DATA_SIZE);
+			uint32_t HiddenDim = 64;
+			CudaAddDense(NeuralNet, HiddenDim);
+			CudaAddRelu(NeuralNet);
+			CudaAddDense(NeuralNet, HiddenDim);
+			CudaAddRelu(NeuralNet);
+			CudaAddDense(NeuralNet, MNIST_CLASS_COUNT);
 
-	// 		neural_net_trainer* Trainer;
-	// 		CudaAllocNeuralNetTrainer(
-	// 			&Trainer,
-	// 			NeuralNet,
-	// 			LearningRate,
-	// 			LayerType_Mse,
-	// 			MiniBatchSize,
-	// 			Labels->NumColumns
-	// 		);
+			neural_net_trainer* Trainer;
+			CudaAllocNeuralNetTrainer(
+				&Trainer,
+				NeuralNet,
+				LearningRate,
+				LayerType_Mse,
+				MiniBatchSize,
+				Labels->NumColumns
+			);
 
-	// 		neural_net* FullBatchNnViewer = NULL;
-	// 		CudaResizedNeuralNet(&FullBatchNnViewer, NeuralNet, TrainingSamples);
-	// 		neural_net* TestNnViewer = NULL;
-	// 		CudaResizedNeuralNet(&TestNnViewer, NeuralNet, TestSamples);
+			neural_net* FullBatchNnViewer = NULL;
+			CudaResizedNeuralNet(&FullBatchNnViewer, NeuralNet, TrainingSamples);
+			AllocMatrixOpJobs(
+				(matrix_op_jobs**) &FullBatchNnViewer->MatrixOpJobs, 4
+			);
+			neural_net* TestNnViewer = NULL;
+			CudaResizedNeuralNet(&TestNnViewer, NeuralNet, TestSamples);
 
-	// 		CudaTrainNeuralNetMiniBatch(
-	// 			Trainer,
-	// 			NeuralNet,
-	// 			Data,
-	// 			Labels,
-	// 			Epochs,
-	// 			true,
-	// 			PrintTraining,
-	// 			TrainingAccuracyThreshold,
-	// 			LossThreshold,
-	// 			FullBatchNnViewer
-	// 		);
+			int64_t StartClock = Win32GetWallClock(); 
+			CudaTrainNeuralNetMiniBatch(
+				Trainer,
+				NeuralNet,
+				Data,
+				Labels,
+				Epochs,
+				true,
+				PrintTraining,
+				TrainingAccuracyThreshold,
+				LossThreshold,
+				FullBatchNnViewer
+			);
+			int64_t EndClock = Win32GetWallClock(); 
+			float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+			printf("Train neural net time seconds: %f\n", Seconds);
 
-	// 		float TrainingAccuracy = CudaTopOneAccuracy(
-	// 			FullBatchNnViewer, Data, Labels
-	// 		);
-	// 		printf("TrainingAccuracy = %f\n", TrainingAccuracy);
+			float TrainingAccuracy = CudaTopOneAccuracy(
+				FullBatchNnViewer, Data, Labels
+			);
+			printf("TrainingAccuracy = %f\n", TrainingAccuracy);
 
-	// 		snprintf(
-	// 			FilePathBuffer,
-	// 			sizeof(FilePathBuffer),
-	// 			"%s/%s",
-	// 			TestDataDirectory,
-	// 			"mnist_test.csv"
-	// 		);
+			snprintf(
+				FilePathBuffer,
+				sizeof(FilePathBuffer),
+				"%s/%s",
+				TestDataDirectory,
+				"mnist_test.csv"
+			);
 
-	// 		matrix* TestData = NULL;
-	// 		matrix* TestLabels = NULL;
-	// 		CudaAllocMatrix(&TestData, TestSamples, MNIST_DATA_SIZE);
-	// 		CudaAllocMatrix(&TestLabels, TestSamples, MNIST_CLASS_COUNT);
-	// 		Result = LoadMnistDigitCsv(
-	// 			TestData, TestLabels, TestSamples, FilePathBuffer
-	// 		);
-	// 		float TestAccuracy = CudaTopOneAccuracy(
-	// 			TestNnViewer, TestData, TestLabels
-	// 		);
-	// 		printf("TestAccuracy = %f\n", TestAccuracy);
+			matrix* TestData = NULL;
+			matrix* TestLabels = NULL;
+			CudaAllocMatrix(&TestData, TestSamples, MNIST_DATA_SIZE);
+			CudaAllocMatrix(&TestLabels, TestSamples, MNIST_CLASS_COUNT);
+			Result = LoadMnistDigitCsv(
+				TestData, TestLabels, TestSamples, FilePathBuffer
+			);
+			float TestAccuracy = CudaTopOneAccuracy(
+				TestNnViewer, TestData, TestLabels
+			);
+			printf("TestAccuracy = %f\n", TestAccuracy);
 
-	// 		if(TestAccuracy < 0.9f)
-	// 		{
-	// 			printf("MNIST training test failed\n");
-	// 		}
+			if(TestAccuracy < 0.9f)
+			{
+				printf("MNIST training test failed\n");
+			}
 
-	// 		// SECTION START: test model saving and loading
-	// 		// snprintf(
-	// 		// 	FilePathBuffer,
-	// 		// 	sizeof(FilePathBuffer),
-	// 		// 	"%s/%s",
-	// 		// 	TestDataDirectory,
-	// 		// 	"models"
-	// 		// );
-	// 		// if(!PathFileExistsA(FilePathBuffer))
-	// 		// {
-	// 		// 	CreateDirectoryA(
-	// 		// 		FilePathBuffer,
-	// 		// 		NULL
-	// 		// 	);
-	// 		// }
-	// 		// snprintf(
-	// 		// 	FilePathBuffer,
-	// 		// 	sizeof(FilePathBuffer),
-	// 		// 	"%s/models/mnist_%dsamples.model",
-	// 		// 	TestDataDirectory,
-	// 		// 	TrainingSamples
-	// 		// );
-	// 		// SaveNeuralNet(NeuralNet, FilePathBuffer);
+			// SECTION START: test model saving and loading
+			// snprintf(
+			// 	FilePathBuffer,
+			// 	sizeof(FilePathBuffer),
+			// 	"%s/%s",
+			// 	TestDataDirectory,
+			// 	"models"
+			// );
+			// if(!PathFileExistsA(FilePathBuffer))
+			// {
+			// 	CreateDirectoryA(
+			// 		FilePathBuffer,
+			// 		NULL
+			// 	);
+			// }
+			// snprintf(
+			// 	FilePathBuffer,
+			// 	sizeof(FilePathBuffer),
+			// 	"%s/models/mnist_%dsamples.model",
+			// 	TestDataDirectory,
+			// 	TrainingSamples
+			// );
+			// SaveNeuralNet(NeuralNet, FilePathBuffer);
 
-	// 		// neural_net* LoadedNeuralNet;
-	// 		// LoadNeuralNet(
-	// 		// 	&LoadedNeuralNet, FilePathBuffer, TestSamples, 4
-	// 		// );
+			// neural_net* LoadedNeuralNet;
+			// LoadNeuralNet(
+			// 	&LoadedNeuralNet, FilePathBuffer, TestSamples, 4
+			// );
 
-	// 		// float LoadedNnTestAccuracy = TopOneAccuracy(
-	// 		// 	LoadedNeuralNet, TestData, TestLabels
-	// 		// );
-	// 		// printf("Loaded NN TestAccuracy = %f\n", LoadedNnTestAccuracy);
+			// float LoadedNnTestAccuracy = TopOneAccuracy(
+			// 	LoadedNeuralNet, TestData, TestLabels
+			// );
+			// printf("Loaded NN TestAccuracy = %f\n", LoadedNnTestAccuracy);
 
-	// 		// SECTION STOP: test model saving and loading
+			// SECTION STOP: test model saving and loading
 
-	// 		// SECTION START: test freeing neural nets
-	// 		// TODO: add a check for available memory before and after
-	// 		// FreeNeuralNetTrainer(Trainer);
-	// 		// FreeNeuralNet(NeuralNet);
-	// 		// FreeNeuralNet(LoadedNeuralNet);
-	// 		// FreeResizedNeuralNet(FullBatchNnViewer);
-	// 		// FreeResizedNeuralNet(TestNnViewer);
-	// 		// SECTION STOP: test freeing neural nets
-	// 	}
-	// 	else
-	// 	{
-	// 		printf("Unable to run mnist test\n");
-	// 	}
-	// }
-	// // SECTION STOP: MNIST with MSE
+			// SECTION START: test freeing neural nets
+			// TODO: add a check for available memory before and after
+			// FreeNeuralNetTrainer(Trainer);
+			// FreeNeuralNet(NeuralNet);
+			// FreeNeuralNet(LoadedNeuralNet);
+			// FreeResizedNeuralNet(FullBatchNnViewer);
+			// FreeResizedNeuralNet(TestNnViewer);
+			// SECTION STOP: test freeing neural nets
+		}
+		else
+		{
+			printf("Unable to run mnist test\n");
+		}
+	}
+	// SECTION STOP: MNIST with MSE
 
 	return 0;
 }

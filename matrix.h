@@ -1,5 +1,6 @@
 #ifndef MATRIX_H
 
+#include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 #include <assert.h>
@@ -71,6 +72,8 @@ inline void SetMatrixElement(
 bool MatricesAreEquivalent(matrix* M1, matrix* M2);
 void SaveMatrix(matrix* Matrix, char* FilePath);
 bool LoadMatrix(matrix* Matrix, char* FilePath);
+void WriteMatrix(matrix* Matrix, FILE* File);
+
 #define MATRIX_H
 
 #endif
