@@ -773,22 +773,25 @@ DWORD WINAPI ReluForwardThread(void* VoidArgs)
 	matrix* Result = Args->Result;
 	uint32_t Start = Args->Start;
 	uint32_t Stride = Args->Stride;
-	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
+		float NewValue;
+		float OldValue = GetMatrixElement(M1, ResultIndex);
+		if(OldValue < 0)
 		{
-			float NewValue;
-			float OldValue = GetMatrixElement(M1, Row, Col);
-			if(OldValue < 0)
-			{
-				NewValue = 0;
-			}
-			else
-			{
-				NewValue = OldValue;
-			}
-			SetMatrixElement(Result, Row, Col, NewValue);
+			NewValue = 0;
 		}
+		else
+		{
+			NewValue = OldValue;
+		}
+		SetMatrixElement(Result, ResultIndex, NewValue);
 	}
 
 	return 0;

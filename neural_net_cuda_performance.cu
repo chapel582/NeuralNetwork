@@ -392,6 +392,40 @@ int main(void)
 		EndClock = Win32GetWallClock();
 		Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
 		printf("Dense back seconds: %f\n", Seconds);
+
+		CudaFreeDenseLayer(DenseLayer);
+		CudaFreeDenseLayerTrain(TrainData);
 	}
 	// SECTION STOP: Dense forward and back performance
+
+	// SECTION START: RELU tests
+	{
+		uint32_t BatchSize = 32;
+		uint32_t InputDim = 64;
+
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
+
+		matrix* Outputs;
+		CudaAllocMatrix(&Outputs, BatchSize, InputDim);
+		int64_t StartClock = Win32GetWallClock();
+		CudaReluForward(Inputs, Outputs);
+		int64_t EndClock = Win32GetWallClock();
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("relu forward seconds: %f\n", Seconds);
+
+		matrix* NextLayerGradient;
+		CudaAllocMatrix(&NextLayerGradient, BatchSize, InputDim);
+		FillMatrixConsecutive(NextLayerGradient);
+
+		relu_train_data* TrainData;
+		CudaAllocReluTrain(&TrainData, BatchSize, InputDim);
+		StartClock = Win32GetWallClock();
+		CudaReluBack(Inputs, NextLayerGradient, TrainData);
+		EndClock = Win32GetWallClock();
+		Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("relu back seconds: %f\n", Seconds);
+	}
+	// SECTION STOP: RELU Tests
 }

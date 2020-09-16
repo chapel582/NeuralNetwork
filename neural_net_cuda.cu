@@ -845,34 +845,35 @@ void CudaAllocReluTrain(
 	CudaInitMatrix(&TrainData->LayerGradient, BatchSize, InputDim);
 }
 
-// TODO: implement free
-// void FreeReluTrain(relu_train_data* TrainData)
-// {
-// 	FreeMatrixData(TrainData->LayerGradient);
-// 	free(TrainData);
-// }
+void CudaFreeReluTrain(relu_train_data* TrainData)
+{
+	CudaFreeMatrixData(&TrainData->LayerGradient);
+	free(TrainData);
+}
 
 __device__
 void CudaReluForwardCore(
 	matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
-	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
+		float NewValue;
+		float OldValue = CudaGetMatrixElement(M1, ResultIndex);
+		if(OldValue < 0)
 		{
-			float NewValue;
-			float OldValue = CudaGetMatrixElement(M1, Row, Col);
-			if(OldValue < 0)
-			{
-				NewValue = 0;
-			}
-			else
-			{
-				NewValue = OldValue;
-			}
-			CudaSetMatrixElement(Result, Row, Col, NewValue);
+			NewValue = 0;
 		}
+		else
+		{
+			NewValue = OldValue;
+		}
+		CudaSetMatrixElement(Result, ResultIndex, NewValue);
 	}
 }
 
@@ -892,7 +893,9 @@ void CudaReluForward(matrix* Inputs, matrix* Outputs)
 
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize, Device);
+	uint32_t NumBlocks = GetNumBlocks(
+		GetMatrixArrayCount(Inputs), BlockSize, Device
+	);
 	CudaReluForwardThread<<<NumBlocks, BlockSize>>>(Inputs, Outputs);
 	cudaDeviceSynchronize();
 }
@@ -906,24 +909,26 @@ void CudaReluBackCore(
 	uint32_t Stride
 )
 {
-	for(uint32_t Row = Start; Row < Inputs->NumRows; Row += Stride)
+	uint32_t NumResultElements = CudaGetMatrixArrayCount(LayerGradient);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Col = 0; Col < Inputs->NumColumns; Col++)
+		float LayerGradientElement;
+		float InputValue = CudaGetMatrixElement(Inputs, ResultIndex);
+		if(InputValue <= 0)
 		{
-			float LayerGradientElement;
-			float InputValue = CudaGetMatrixElement(Inputs, Row, Col);
-			if(InputValue <= 0)
-			{
-				LayerGradientElement = 0;
-			}
-			else
-			{
-				LayerGradientElement = CudaGetMatrixElement(
-					NextLayerGradient, Row, Col
-				);
-			}
-			CudaSetMatrixElement(LayerGradient, Row, Col, LayerGradientElement);
+			LayerGradientElement = 0;
 		}
+		else
+		{
+			LayerGradientElement = CudaGetMatrixElement(
+				NextLayerGradient, ResultIndex
+			);
+		}
+		CudaSetMatrixElement(LayerGradient, ResultIndex, LayerGradientElement);
 	}
 }
 
@@ -949,7 +954,9 @@ void CudaReluBack(
 {
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize, Device);
+	uint32_t NumBlocks = GetNumBlocks(
+		GetMatrixArrayCount(Inputs), BlockSize, Device
+	);
 	CudaReluBackThread<<<NumBlocks, BlockSize>>>(
 		Inputs, NextLayerGradient, &TrainData->LayerGradient
 	);

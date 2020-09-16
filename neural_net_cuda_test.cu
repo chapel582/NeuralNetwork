@@ -408,65 +408,65 @@ int main(int argc, char* argv[])
 	}
 	// SECTION STOP: Dense layer tests
 
-	// // SECTION START: RELU tests
-	// {
-	// 	uint32_t BatchSize = 8;
-	// 	uint32_t InputDim = 4;
+	// SECTION START: RELU tests
+	{
+		uint32_t BatchSize = 8;
+		uint32_t InputDim = 4;
 
-	// 	matrix* Inputs;
-	// 	CudaAllocMatrix(&Inputs, BatchSize, InputDim);
-	// 	FillMatrixConsecutive(Inputs);
+		matrix* Inputs;
+		CudaAllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
 
-	// 	matrix* Outputs;
-	// 	CudaAllocMatrix(&Outputs, BatchSize, InputDim);
-	// 	CudaReluForward(Inputs, Outputs);
-	// 	TestMatrixResult(
-	// 		Outputs,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaReluForwardPositive",
-	// 		EndianString
-	// 	);
+		matrix* Outputs;
+		CudaAllocMatrix(&Outputs, BatchSize, InputDim);
+		CudaReluForward(Inputs, Outputs);
+		TestMatrixResult(
+			Outputs,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaReluForwardPositive",
+			EndianString
+		);
 
-	// 	matrix* NextLayerGradient;
-	// 	CudaAllocMatrix(&NextLayerGradient, BatchSize, InputDim);
-	// 	FillMatrixConsecutive(NextLayerGradient);
+		matrix* NextLayerGradient;
+		CudaAllocMatrix(&NextLayerGradient, BatchSize, InputDim);
+		FillMatrixConsecutive(NextLayerGradient);
 
-	// 	relu_train_data* TrainData;
-	// 	CudaAllocReluTrain(&TrainData, BatchSize, InputDim);
-	// 	CudaReluBack(Inputs, NextLayerGradient, TrainData);
-	// 	TestMatrixResult(
-	// 		&TrainData->LayerGradient,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaReluLayerGradientPositive",
-	// 		EndianString
-	// 	);
+		relu_train_data* TrainData;
+		CudaAllocReluTrain(&TrainData, BatchSize, InputDim);
+		CudaReluBack(Inputs, NextLayerGradient, TrainData);
+		TestMatrixResult(
+			&TrainData->LayerGradient,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaReluLayerGradientPositive",
+			EndianString
+		);
 
-	// 	CudaMatrixScalarMult(-1.0f, Inputs, Inputs);
-	// 	CudaReluForward(Inputs, Outputs);
-	// 	TestMatrixResult(
-	// 		Outputs,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaReluForwardNegative",
-	// 		EndianString
-	// 	);
+		CudaMatrixScalarMult(-1.0f, Inputs, Inputs);
+		CudaReluForward(Inputs, Outputs);
+		TestMatrixResult(
+			Outputs,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaReluForwardNegative",
+			EndianString
+		);
 
-	// 	CudaReluBack(Inputs, NextLayerGradient, TrainData);
-	// 	TestMatrixResult(
-	// 		&TrainData->LayerGradient,
-	// 		FilePathBuffer, 
-	// 		sizeof(FilePathBuffer),
-	// 		TestDataDirectory,
-	// 		"CudaReluLayerGradientNegative",
-	// 		EndianString
-	// 	);
-	// }
-	// // SECTION STOP: RELU Tests
+		CudaReluBack(Inputs, NextLayerGradient, TrainData);
+		TestMatrixResult(
+			&TrainData->LayerGradient,
+			FilePathBuffer, 
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"CudaReluLayerGradientNegative",
+			EndianString
+		);
+	}
+	// SECTION STOP: RELU Tests
 
 	// // SECTION START: MSE Test
 	// {
