@@ -480,17 +480,19 @@ void MatrixSubtractCore(
 	assert(M1->NumRows == M2->NumRows);
 	assert(M1->NumColumns == M2->NumColumns);
 
-	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
-		{
-			SetMatrixElement(
-				Result,
-				Row,
-				Col,
-				GetMatrixElement(M1, Row, Col) - GetMatrixElement(M2, Row, Col)
-			);
-		}
+		SetMatrixElement(
+			Result,
+			ResultIndex,
+			GetMatrixElement(M1, ResultIndex) -
+			GetMatrixElement(M2, ResultIndex)
+		);
 	}
 }
 

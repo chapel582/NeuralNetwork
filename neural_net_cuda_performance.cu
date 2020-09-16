@@ -197,6 +197,31 @@ int main(void)
 		uint32_t NumRows = 64;
 		uint32_t NumColumns = 2 << 10;
 		CudaAllocMatrix(&M1, NumRows, NumColumns);
+		FillMatrixConsecutive(M1);		
+
+		matrix* M2;
+		CudaAllocMatrix(&M2, NumRows, NumColumns);
+		FillMatrixConsecutive(M2);
+
+		matrix* SubtractResult;
+		CudaAllocMatrix(&SubtractResult, NumRows, NumColumns);
+
+		int64_t StartClock = Win32GetWallClock(); 
+		CudaMatrixSubtract(M1, M2, SubtractResult);
+		int64_t EndClock = Win32GetWallClock(); 
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("MatrixSubtract seconds: %f\n", Seconds);
+		
+		CudaFreeMatrix(M1);
+		CudaFreeMatrix(M2);
+		CudaFreeMatrix(SubtractResult);
+	}
+
+	{
+		matrix* M1;
+		uint32_t NumRows = 64;
+		uint32_t NumColumns = 2 << 10;
+		CudaAllocMatrix(&M1, NumRows, NumColumns);
 		FillMatrixConsecutive(M1);
 		
 		int64_t StartClock = Win32GetWallClock(); 

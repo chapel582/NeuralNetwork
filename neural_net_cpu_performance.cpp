@@ -156,6 +156,31 @@ int main(void)
 		uint32_t NumRows = 64;
 		uint32_t NumColumns = 2 << 10;
 		AllocMatrix(&M1, NumRows, NumColumns);
+		FillMatrixConsecutive(M1);		
+
+		matrix* M2;
+		AllocMatrix(&M2, NumRows, NumColumns);
+		FillMatrixConsecutive(M2);
+
+		matrix* SubResult;
+		AllocMatrix(&SubResult, NumRows, NumColumns);
+
+		int64_t StartClock = Win32GetWallClock(); 
+		MatrixSubtract(MatrixOpJobs, M1, M2, SubResult);
+		int64_t EndClock = Win32GetWallClock(); 
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("MatrixSubtract seconds: %f\n", Seconds);
+		
+		FreeMatrix(M1);
+		FreeMatrix(M2);
+		FreeMatrix(SubResult);
+	}
+
+	{
+		matrix* M1;
+		uint32_t NumRows = 64;
+		uint32_t NumColumns = 2 << 10;
+		AllocMatrix(&M1, NumRows, NumColumns);
 		FillMatrixConsecutive(M1);
 		
 		int64_t StartClock = Win32GetWallClock(); 

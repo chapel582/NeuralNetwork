@@ -554,18 +554,19 @@ void CudaMatrixSubtractCore(
 	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
-	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
-		{
-			CudaSetMatrixElement(
-				Result,
-				Row,
-				Col,
-				CudaGetMatrixElement(M1, Row, Col) - 
-				CudaGetMatrixElement(M2, Row, Col)
-			);
-		}
+		CudaSetMatrixElement(
+			Result,
+			ResultIndex,
+			CudaGetMatrixElement(M1, ResultIndex) - 
+			CudaGetMatrixElement(M2, ResultIndex)
+		);
 	}
 }
 
@@ -588,7 +589,9 @@ void CudaMatrixSubtract(matrix* M1, matrix* M2, matrix* Result)
 
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, BlockSize);
+	uint32_t NumBlocks = GetNumBlocks(
+		GetMatrixArrayCount(M1), BlockSize, BlockSize
+	);
 
 	CudaMatrixSubtractThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
 	cudaDeviceSynchronize();
