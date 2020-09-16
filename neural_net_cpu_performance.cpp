@@ -212,6 +212,46 @@ int main(void)
 		printf("AddVectorToRows seconds: %f\n", Seconds);
 	}
 
+	// SECTION START: Dense forward and back performance
+	{
+		uint32_t BatchSize = 32;
+		uint32_t InputDim = 2 << 10;
+		uint32_t OutputDim = 64;
+		matrix* Inputs;
+		AllocMatrix(&Inputs, BatchSize, InputDim);
+		FillMatrixConsecutive(Inputs);
+
+		matrix* Outputs;
+		AllocMatrix(&Outputs, BatchSize, OutputDim);
+		MatrixClear(Outputs);
+
+		dense_layer* DenseLayer;
+		AllocDenseLayer(&DenseLayer, InputDim, OutputDim);
+		FillMatrixConsecutive(&DenseLayer->Weights);
+		FillMatrixConsecutive(&DenseLayer->Bias);
+		
+		int64_t StartClock = Win32GetWallClock();
+		DenseForward(MatrixOpJobs, Inputs, DenseLayer, Outputs);
+		int64_t EndClock = Win32GetWallClock();
+		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		printf("Dense forward seconds: %f\n", Seconds);
+
+		matrix* NextLayerGradient;
+		AllocMatrix(&NextLayerGradient, BatchSize, OutputDim);
+		FillMatrixConsecutive(NextLayerGradient);
+
+		// dense_layer_train_data* TrainData;
+		// CudaAllocDenseLayerTrain(&TrainData, DenseLayer, 1.0f, BatchSize);
+		// StartClock = Win32GetWallClock();
+		// CudaDenseBack(
+		// 	Inputs, NextLayerGradient, DenseLayer, TrainData
+		// );
+		// EndClock = Win32GetWallClock();
+		// Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+		// printf("Dense back seconds: %f\n", Seconds);
+	}
+	// SECTION STOP: Dense forward and back performance
+
 	// // SECTION START: MatrixMult: M1 high number of rows test
 	// {
 	// 	matrix* M1;

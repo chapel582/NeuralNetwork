@@ -144,6 +144,11 @@ inline uint32_t GetBlockSize(uint32_t Device)
 	return GlobalMaxBlockSizeArray[Device];
 }
 
+inline uint32_t GetMaxNumBlocks(uint32_t Device)
+{
+	return GlobalMaxGridDimArray[Device];
+}
+
 uint32_t GetNumBlocks(uint32_t Range, uint32_t BlockSize, uint32_t Device)
 {
 	// NOTE: for getting max blocks for operations that are parallelizable 
@@ -153,7 +158,7 @@ uint32_t GetNumBlocks(uint32_t Range, uint32_t BlockSize, uint32_t Device)
 	// CONT: process grows
 	
 	uint32_t NumBlocks = (Range + BlockSize - 1) / BlockSize;
-	int MaxBlocks = GlobalMaxGridDimArray[Device];
+	int MaxBlocks = GetMaxNumBlocks(Device);
 	if(MaxBlocks < NumBlocks)
 	{
 		MaxBlocks = NumBlocks;
@@ -701,7 +706,7 @@ void CudaDenseForward(matrix* Inputs, dense_layer* DenseLayer, matrix* Results)
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
 	uint32_t NumBlocks = GetNumBlocks(
-		DenseLayer->Weights.NumRows, BlockSize, Device
+		GetMatrixArrayCount(Results), BlockSize, Device
 	);
 	CudaDenseForwardThread<<<NumBlocks, BlockSize>>>(
 		Inputs, DenseLayer, Results
@@ -753,58 +758,42 @@ void CudaDenseBackCore(
 	uint32_t Stride
 )
 {
+	// NOTE: all of these operations don't have any dependencies on other 
+	// CONT: thread's outcomes, so we don't need calls to __syncthreads 
+
+	matrix* Weights = &DenseLayer->Weights;
+
+	// NOTE: Calculate this layer's gradient
 	CudaMatrixMultM2TransposeCore(
 		NextLayerGradient,
-		&DenseLayer->Weights,
+		Weights,
 		&TrainData->LayerGradient,
 		Start,
 		Stride
 	);
-	__syncthreads();
 
+	// NOTE: Calculate the delta for the weights
+	matrix* WeightsDelta = &TrainData->WeightsDelta;
 	CudaMatrixMultM1TransposeCore(
-		Inputs, NextLayerGradient, &TrainData->WeightsDelta, Start, Stride
+		Inputs, NextLayerGradient, WeightsDelta, Start, Stride
 	);
-	__syncthreads();
-	
 	CudaMatrixScalarMultCore(
-		TrainData->LearningRate,
-		&TrainData->WeightsDelta,
-		&TrainData->WeightsDelta,
-		Start,
-		Stride
+		TrainData->LearningRate, WeightsDelta, WeightsDelta, Start, Stride
 	);
-	__syncthreads();
 	
-	CudaMatrixAddCore(
-		&DenseLayer->Weights,
-		&TrainData->WeightsDelta,
-		&DenseLayer->Weights,
-		Start,
-		Stride
-	);
-	__syncthreads();
+	// NOTE: update weights
+	CudaMatrixAddCore(Weights, WeightsDelta, Weights, Start, Stride);
 	
-	CudaMatrixMeanCore(NextLayerGradient, &TrainData->BiasDelta, Start, Stride);
-	__syncthreads();
-
+	// NOTE: calculate bias delta
+	matrix* Bias = &DenseLayer->Bias;
+	matrix* BiasDelta = &TrainData->BiasDelta;
+	CudaMatrixMeanCore(NextLayerGradient, BiasDelta, Start, Stride);
 	CudaMatrixScalarMultCore(
-		TrainData->LearningRate,
-		&TrainData->BiasDelta,
-		&TrainData->BiasDelta,
-		Start,
-		Stride
+		TrainData->LearningRate, BiasDelta, BiasDelta, Start, Stride
 	);
-	__syncthreads();
 
-	CudaMatrixAddCore(
-		&DenseLayer->Bias,
-		&TrainData->BiasDelta,
-		&DenseLayer->Bias,
-		Start,
-		Stride
-	);
-	__syncthreads();
+	// NOTE: update bias
+	CudaMatrixAddCore(Bias, BiasDelta, Bias, Start, Stride);
 }
 
 __global__
@@ -832,7 +821,7 @@ void CudaDenseBack(
 {
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetNumBlocks(Inputs->NumRows, BlockSize, Device);
+	uint32_t NumBlocks = GetMaxNumBlocks(Device);
 	CudaDenseBackThread<<<NumBlocks, BlockSize>>>(
 		Inputs,
 		NextLayerGradient,
@@ -1102,12 +1091,11 @@ void CudaAllocMseTrainData(
 	CudaInitMatrix(&TrainData->LayerGradient, BatchSize, PredictionDim);
 }
 
-// TODO: implement me
-// void FreeMseTrainData(mse_train_data* TrainData)
-// {
-// 	FreeMatrixData(TrainData->LayerGradient);
-// 	free(TrainData);
-// }
+void CudaFreeMseTrainData(mse_train_data* TrainData)
+{
+	CudaFreeMatrixData(&TrainData->LayerGradient);
+	cudaFree(TrainData);
+}
 
 __device__
 void CudaMseBackCore(
