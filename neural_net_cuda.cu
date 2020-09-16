@@ -230,20 +230,21 @@ void CudaAddVectorToRowsCore(
 	matrix* M1, matrix* Vector, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
-	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
+	uint32_t ResultColumns = Result->NumColumns;
+	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
 	{
-		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
-		{
-			CudaSetMatrixElement(
-				Result,
-				Row,
-				Col,
-				(
-					CudaGetMatrixElement(M1, Row, Col) + 
-					CudaGetMatrixElement(Vector, Col)
-				)
-			);
-		}
+		uint32_t Column = ResultIndex % ResultColumns;
+		CudaSetMatrixElement(
+			Result,
+			ResultIndex,
+			CudaGetMatrixElement(M1, ResultIndex) + 
+			CudaGetMatrixElement(Vector, Column)
+		);
 	}
 }
 
@@ -282,7 +283,9 @@ void CudaAddVectorToRows(matrix* M1, matrix* Vector, matrix* Result)
 	// CONT: a data structure
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetNumBlocks(M1->NumRows, BlockSize, Device);
+	uint32_t NumBlocks = GetNumBlocks(
+		GetMatrixArrayCount(M1), BlockSize, Device
+	);
 	CudaAddVectorToRowsThread<<<NumBlocks, BlockSize>>>(M1, Vector, Result);
 	cudaDeviceSynchronize();
 }
