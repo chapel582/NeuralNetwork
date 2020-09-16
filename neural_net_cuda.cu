@@ -1066,6 +1066,53 @@ void CudaAddMeanSquared(neural_net* NeuralNet)
 	CudaAddLayerLink(NeuralNet, LayerType_Mse);
 }
 
+void CudaFreeNeuralNet(neural_net* NeuralNet)
+{
+	layer_link* LayerLink = NeuralNet->FirstLink;
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < NeuralNet->NumLayers;
+		LayerIndex++
+	)
+	{
+		switch(LayerLink->Type)
+		{
+			case(LayerType_Dense):
+			{
+				dense_layer* DenseLayer = (dense_layer*) LayerLink->Data;
+				CudaFreeDenseLayer(DenseLayer);
+				break;
+			}
+			case(LayerType_Relu):
+			{				
+				break;
+			}
+			case(LayerType_Softmax):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_CrossEntropy):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_Mse):
+			{
+				break;
+			}
+			default:
+			{				
+				break;
+			}
+		}
+
+		layer_link* Next = LayerLink->Next;
+		CudaFreeLayerLink(LayerLink);
+		LayerLink = Next;
+	}
+}
+
 void CudaResizedNeuralNet(
 	neural_net** Result, neural_net* Source, uint32_t NewBatchSize
 )
@@ -1147,6 +1194,21 @@ void CudaFreeMseTrainData(mse_train_data* TrainData)
 {
 	CudaFreeMatrixData(&TrainData->LayerGradient);
 	cudaFree(TrainData);
+}
+
+void CudaFreeResizedNeuralNet(neural_net* NeuralNet)
+{
+	layer_link* LayerLink = NeuralNet->FirstLink;
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < NeuralNet->NumLayers;
+		LayerIndex++
+	)
+	{
+		layer_link* Next = LayerLink->Next;
+		CudaFreeLayerLink(LayerLink);
+		LayerLink = Next;
+	}
 }
 
 void CudaNeuralNetForward(
@@ -1364,6 +1426,63 @@ void CudaAllocNeuralNetTrainer(
 	CudaAllocMatrix(&Trainer->MiniBatchLabels, MiniBatchSize, OutputDim);
 }
 
+void CudaFreeNeuralNetTrainer(neural_net_trainer* Trainer)
+{
+	// NOTE: trainers should be freed before their NNs
+	neural_net* NeuralNet = Trainer->NeuralNet;
+	void** TrainDataArray = Trainer->TrainDataArray;
+	layer_link* LayerLink = NeuralNet->FirstLink;
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < NeuralNet->NumLayers;
+		LayerIndex++
+	)
+	{
+		switch(LayerLink->Type)
+		{
+			case(LayerType_Dense):
+			{
+				CudaFreeDenseLayerTrain(
+					(dense_layer_train_data*) TrainDataArray[LayerIndex]					
+				);
+				break;
+			}
+			case(LayerType_Relu):
+			{
+				CudaFreeReluTrain(
+					(relu_train_data*) TrainDataArray[LayerIndex]
+				);
+				break;
+			}
+			case(LayerType_Softmax):
+			{
+				// TODO: implement
+				break;
+			}
+			case(LayerType_CrossEntropy):
+			{
+				// TODO: implement
+				break;
+			}
+			case(LayerType_Mse):
+			{
+				CudaFreeMseTrainData(
+					(mse_train_data*) TrainDataArray[LayerIndex]
+				);
+				break;
+			}
+			default:
+			{
+				break;
+			}
+		}
+		LayerLink = LayerLink->Next;
+	}
+
+	cudaFree(TrainDataArray);
+	cudaFree(Trainer);
+}
+
 void CudaTrainNeuralNet(
 	neural_net_trainer* Trainer,
 	neural_net* NeuralNet,
@@ -1472,59 +1591,6 @@ void CudaTrainNeuralNet(
 			LayerLink = PreviousLayer;
 		}
 	}
-}
-
-float CudaTopOneAccuracy(
-	neural_net* NeuralNet,
-	matrix* Inputs,
-	matrix* Labels,
-	matrix** PredictionsPtr = NULL
-)
-{
-	bool FreePredictionsPtr;
-	if(PredictionsPtr == NULL)
-	{
-		cudaMallocManaged(&PredictionsPtr, sizeof(matrix*));
-	}
-	else
-	{
-		FreePredictionsPtr = false;
-	}
-
-	matrix* Predictions = *PredictionsPtr;
-	CudaNeuralNetForward(
-		NeuralNet,
-		Inputs,
-		Labels,
-		PredictionsPtr,
-		NULL
-	);
-	
-	uint32_t TotalCorrect = 0;
-	for(
-		uint32_t SampleIndex = 0;
-		SampleIndex < Predictions->NumRows;
-		SampleIndex++
-	)
-	{
-		uint32_t PredictedLabel = ArgMax(
-			GetMatrixRow(Predictions, SampleIndex), Predictions->NumColumns
-		);
-		uint32_t ActualLabel = ArgMax(
-			GetMatrixRow(Labels, SampleIndex), Predictions->NumColumns
-		);
-		if(PredictedLabel == ActualLabel)
-		{
-			TotalCorrect++;
-		}
-	}
-
-	if(FreePredictionsPtr)
-	{
-		cudaFree(PredictionsPtr);
-	}
-
-	return (float) TotalCorrect / (float) Predictions->NumRows;
 }
 
 void CudaTrainNeuralNetMiniBatch(
