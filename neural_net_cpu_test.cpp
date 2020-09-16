@@ -1718,7 +1718,7 @@ int main(int argc, char* argv[])
 	// SECTION START: MNIST with MSE
 	printf("Starting MNIST training. This may take a 2-4 minutes...\n");
 	{
-		uint32_t MiniBatchSize = 32;
+		uint32_t MiniBatchSize = 128;
 		uint32_t TrainingSamples = 2048;
 		uint32_t TestSamples = 100;
 		uint32_t Epochs = 100;
