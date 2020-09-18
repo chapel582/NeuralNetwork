@@ -212,27 +212,6 @@ void CudaAddVectorToRows(matrix* M1, matrix* Vector, matrix* Result)
 	cudaDeviceSynchronize();
 }
 
-__device__
-void CudaMatrixAddCore(
-	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
-)
-{
-	uint32_t NumResultElements = GetMatrixArrayCount(Result);
-	for(
-		uint32_t ResultIndex = Start;
-		ResultIndex < NumResultElements;
-		ResultIndex += Stride
-	)
-	{
-		SetMatrixElement(
-			Result,
-			ResultIndex,
-			GetMatrixElement(M1, ResultIndex) + 
-			GetMatrixElement(M2, ResultIndex)
-		);
-	}
-}
-
 __global__
 void CudaMatrixAddThread(matrix* M1, matrix* M2, matrix* Result)
 {
@@ -242,7 +221,7 @@ void CudaMatrixAddThread(matrix* M1, matrix* M2, matrix* Result)
 	// NOTE: this basically calculates the # of threads
 	uint32_t Stride = blockDim.x * gridDim.x;
 
-	CudaMatrixAddCore(M1, M2, Result, Start, Stride);
+	MatrixAddCore(M1, M2, Result, Start, Stride);
 }
 
 void CudaMatrixAdd(matrix* M1, matrix* M2, matrix* Result)
@@ -630,7 +609,7 @@ void CudaDenseBackCore(
 	);
 	
 	// NOTE: update weights
-	CudaMatrixAddCore(Weights, WeightsDelta, Weights, Start, Stride);
+	MatrixAddCore(Weights, WeightsDelta, Weights, Start, Stride);
 
 	// NOTE: calculate bias delta
 	matrix* Bias = &DenseLayer->Bias;
@@ -641,7 +620,7 @@ void CudaDenseBackCore(
 	);
 
 	// NOTE: update bias
-	CudaMatrixAddCore(Bias, BiasDelta, Bias, Start, Stride);
+	MatrixAddCore(Bias, BiasDelta, Bias, Start, Stride);
 	__syncthreads();
 }
 
