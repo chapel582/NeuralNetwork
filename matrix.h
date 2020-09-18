@@ -47,6 +47,10 @@ HOST_PREFIX DEVICE_PREFIX
 void MatrixMultM2TransposeCore(
 	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
 );
+HOST_PREFIX DEVICE_PREFIX
+void MatrixMultM1M2TransposeCore(
+	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+);
 
 #define MATRIX_H
 
