@@ -350,10 +350,10 @@ void MatrixMeanCore(matrix* M1, matrix* Result, int Start, int Stride)
 		for(uint32_t Col = Start; Col < M1->NumColumns; Col += Stride)
 		{
 			float NewValue = (
-				GetMatrixElement(Result, 0, Col) + 
+				GetMatrixElement(Result, Col) + 
 				GetMatrixElement(M1, Row, Col)
 			);
-			SetMatrixElement(Result, 0, Col, NewValue);
+			SetMatrixElement(Result, Col, NewValue);
 		}
 	}
 	MatrixScalarMultCore(
