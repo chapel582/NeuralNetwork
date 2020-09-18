@@ -35,6 +35,11 @@ void SaveMatrix(matrix* Matrix, char* FilePath);
 bool LoadMatrix(matrix* Matrix, char* FilePath);
 void WriteMatrix(matrix* Matrix, FILE* File);
 
+HOST_PREFIX DEVICE_PREFIX
+void MatrixMultCore(
+	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+);
+
 #define MATRIX_H
 
 #endif

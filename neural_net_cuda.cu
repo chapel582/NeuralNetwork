@@ -123,34 +123,6 @@ uint32_t GetNumBlocks(uint32_t Range, uint32_t BlockSize, uint32_t Device)
 	return NumBlocks;
 }
 
-__device__
-void CudaMatrixMultCore(
-	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
-)
-{
-	uint32_t CommonDim = M1->NumColumns;
-	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = GetMatrixArrayCount(Result);
-	for(
-		uint32_t ResultIndex = Start;
-		ResultIndex < NumResultElements;
-		ResultIndex += Stride
-	)
-	{
-		uint32_t Row = ResultIndex / ResultColumns;
-		uint32_t Column = ResultIndex % ResultColumns;
-		float DotProduct = 0.0f;
-		for(uint32_t DPIndex = 0; DPIndex < CommonDim; DPIndex++)
-		{
-			DotProduct += (
-				GetMatrixElement(M1, Row, DPIndex) * 
-				GetMatrixElement(M2, DPIndex, Column)
-			);
-		}
-		SetMatrixElement(Result, Row, Column, DotProduct);
-	}
-}
-
 __global__
 void CudaMatrixMultThread(matrix* M1, matrix* M2, matrix* Result)
 {	
@@ -160,7 +132,7 @@ void CudaMatrixMultThread(matrix* M1, matrix* M2, matrix* Result)
 	// NOTE: this basically calculates the # of threads
 	uint32_t Stride = blockDim.x * gridDim.x;
 
-	CudaMatrixMultCore(M1, M2, Result, Start, Stride);
+	MatrixMultCore(M1, M2, Result, Start, Stride);
 }
 
 void CudaMatrixMult(matrix* M1, matrix* M2, matrix* Result)
@@ -641,7 +613,9 @@ void CudaDenseForwardCore(
 	uint32_t Stride
 )
 {
-	CudaMatrixMultCore(Inputs, &DenseLayer->Weights, Results, Start, Stride);
+	MatrixMultCore(Inputs, &DenseLayer->Weights, Results, Start, Stride);
+	__syncthreads();
+	
 	CudaAddVectorToRowsCore(
 		Results, &DenseLayer->Bias, Results, Start, Stride
 	);
