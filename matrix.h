@@ -1,5 +1,7 @@
 #ifndef MATRIX_H
 
+#include "project_flags.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -12,62 +14,21 @@ struct matrix
 	float* Data;
 };
 
-inline uint32_t GetMatrixArrayCount(matrix* Matrix)
-{
-	return Matrix->NumRows * Matrix->NumColumns;
-}
-
-inline size_t GetMatrixDataSize(matrix* Matrix)
-{
-	return GetMatrixArrayCount(Matrix) * sizeof(float);
-}
-
-inline float* GetMatrixRow(matrix* Matrix, uint32_t Row)
-{
-	assert(Row < Matrix->NumRows);
-	float* Element = Matrix->Data + Row * Matrix->NumColumns;
-	return Element;
-}
-
-inline float GetMatrixElement(matrix* Matrix, uint32_t Row, uint32_t Column)
-{
-	assert(Row < Matrix->NumRows);
-	assert(Column < Matrix->NumColumns);
-	float* Element = Matrix->Data + Row * Matrix->NumColumns + Column;
-	return *Element;
-}
-
-inline float GetMatrixElement(matrix* Matrix, uint32_t ElementIndex)
-{
-	// NOTE: made available if the Row, Column asserts in the standard 
-	// CONT: GetMatrixElement isn't needed. Mostly used for when you don't care
-	// CONT: if you have a row or column matrix
-	assert(ElementIndex < GetMatrixArrayCount(Matrix));
-	float* Element = Matrix->Data + ElementIndex;
-	return *Element;
-}
-
-inline void SetMatrixElement(
+HOST_PREFIX DEVICE_PREFIX uint32_t GetMatrixArrayCount(matrix* Matrix);
+HOST_PREFIX DEVICE_PREFIX size_t GetMatrixDataSize(matrix* Matrix);
+HOST_PREFIX DEVICE_PREFIX float* GetMatrixRow(matrix* Matrix, uint32_t Row);
+HOST_PREFIX DEVICE_PREFIX float GetMatrixElement(
+	matrix* Matrix, uint32_t Row, uint32_t Column
+);
+HOST_PREFIX DEVICE_PREFIX float GetMatrixElement(
+	matrix* Matrix, uint32_t ElementIndex
+);
+HOST_PREFIX DEVICE_PREFIX void SetMatrixElement(
 	matrix* Matrix, uint32_t Row, uint32_t Column, float Value
-)
-{
-	assert(Row < Matrix->NumRows);
-	assert(Column < Matrix->NumColumns);
-	float* Element = Matrix->Data + Row * Matrix->NumColumns + Column;
-	*Element = Value;
-}
-
-inline void SetMatrixElement(
+);
+HOST_PREFIX DEVICE_PREFIX void SetMatrixElement(
 	matrix* Matrix, uint32_t ElementIndex, float Value
-)
-{
-	// NOTE: made available if the Row, Column asserts in the standard 
-	// CONT: GetMatrixElement isn't needed. Mostly used for when you don't care
-	// CONT: if you have a row or column matrix
-	assert(ElementIndex < GetMatrixArrayCount(Matrix));
-	float* Element = Matrix->Data + ElementIndex;
-	*Element = Value;
-}
+);
 
 bool MatricesAreEquivalent(matrix* M1, matrix* M2);
 void SaveMatrix(matrix* Matrix, char* FilePath);

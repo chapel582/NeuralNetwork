@@ -1,5 +1,6 @@
 #include "arg_max.h"
 
+#include "performance.cpp"
 #include "matrix.cpp"
 #include "neural_net_cpu.cpp"
 #include "matrix_test.cpp"
@@ -117,6 +118,10 @@ int main(int argc, char* argv[])
 		strcpy_s(EndianString, sizeof(EndianString), "LittleEndian");
 	}
 	char FilePathBuffer[260];
+
+	LARGE_INTEGER PerformanceFrequency;
+	QueryPerformanceFrequency(&PerformanceFrequency);
+	GlobalPerformanceFrequency = PerformanceFrequency.QuadPart;
 
 	// SECTION START: Matrix tests
 	{
@@ -1771,6 +1776,7 @@ int main(int argc, char* argv[])
 			neural_net* TestNnViewer = NULL;
 			ResizedNeuralNet(&TestNnViewer, NeuralNet, TestSamples);
 
+			int64_t StartClock = Win32GetWallClock();
 			TrainNeuralNetMiniBatch(
 				Trainer,
 				NeuralNet,
@@ -1783,6 +1789,9 @@ int main(int argc, char* argv[])
 				LossThreshold,
 				FullBatchNnViewer
 			);
+			int64_t EndClock = Win32GetWallClock(); 
+			float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+			printf("Training time seconds: %f\n", Seconds);
 
 			float TrainingAccuracy = TopOneAccuracy(
 				FullBatchNnViewer, Data, Labels

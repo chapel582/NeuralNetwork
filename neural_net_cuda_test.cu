@@ -133,6 +133,10 @@ int main(int argc, char* argv[])
 	}
 	char FilePathBuffer[260];
 
+	LARGE_INTEGER PerformanceFrequency;
+	QueryPerformanceFrequency(&PerformanceFrequency);
+	GlobalPerformanceFrequency = PerformanceFrequency.QuadPart;
+
 	matrix_op_jobs* MatrixOpJobs;
 	AllocMatrixOpJobs(&MatrixOpJobs, 4);
 
@@ -1528,6 +1532,7 @@ int main(int argc, char* argv[])
 			neural_net* TestNnViewer = NULL;
 			CudaResizedNeuralNet(&TestNnViewer, NeuralNet, TestSamples);
 
+			int64_t StartClock = Win32GetWallClock(); 
 			CudaTrainNeuralNetMiniBatch(
 				Trainer,
 				NeuralNet,
@@ -1540,6 +1545,9 @@ int main(int argc, char* argv[])
 				LossThreshold,
 				FullBatchNnViewer
 			);
+			int64_t EndClock = Win32GetWallClock(); 
+			float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+			printf("Training time seconds: %f\n", Seconds);
 
 			float TrainingAccuracy = TopOneAccuracy(
 				FullBatchNnViewer, Data, Labels
@@ -1573,49 +1581,49 @@ int main(int argc, char* argv[])
 				printf("MNIST training test failed\n");
 			}
 
-			// SECTION START: test model saving and loading
-			snprintf(
-				FilePathBuffer,
-				sizeof(FilePathBuffer),
-				"%s/%s",
-				TestDataDirectory,
-				"models"
-			);
-			if(!PathFileExistsA(FilePathBuffer))
-			{
-				CreateDirectoryA(
-					FilePathBuffer,
-					NULL
-				);
-			}
-			snprintf(
-				FilePathBuffer,
-				sizeof(FilePathBuffer),
-				"%s/models/mnist_%dsamples.model",
-				TestDataDirectory,
-				TrainingSamples
-			);
-			SaveNeuralNet(NeuralNet, FilePathBuffer);
+			// // SECTION START: test model saving and loading
+			// snprintf(
+			// 	FilePathBuffer,
+			// 	sizeof(FilePathBuffer),
+			// 	"%s/%s",
+			// 	TestDataDirectory,
+			// 	"models"
+			// );
+			// if(!PathFileExistsA(FilePathBuffer))
+			// {
+			// 	CreateDirectoryA(
+			// 		FilePathBuffer,
+			// 		NULL
+			// 	);
+			// }
+			// snprintf(
+			// 	FilePathBuffer,
+			// 	sizeof(FilePathBuffer),
+			// 	"%s/models/mnist_%dsamples.model",
+			// 	TestDataDirectory,
+			// 	TrainingSamples
+			// );
+			// SaveNeuralNet(NeuralNet, FilePathBuffer);
 
-			neural_net* LoadedNeuralNet;
-			LoadNeuralNet(
-				&LoadedNeuralNet, FilePathBuffer, TestSamples, 4
-			);
+			// neural_net* LoadedNeuralNet;
+			// LoadNeuralNet(
+			// 	&LoadedNeuralNet, FilePathBuffer, TestSamples, 4
+			// );
 
-			float LoadedNnTestAccuracy = TopOneAccuracy(
-				LoadedNeuralNet, TestData, TestLabels
-			);
-			printf("Loaded NN TestAccuracy = %f\n", LoadedNnTestAccuracy);
+			// float LoadedNnTestAccuracy = TopOneAccuracy(
+			// 	LoadedNeuralNet, TestData, TestLabels
+			// );
+			// printf("Loaded NN TestAccuracy = %f\n", LoadedNnTestAccuracy);
 
 			// SECTION STOP: test model saving and loading
 
 			// SECTION START: test freeing neural nets
 			// TODO: add a check for available memory before and after
-			CudaFreeNeuralNetTrainer(Trainer);
-			CudaFreeNeuralNet(NeuralNet);
-			CudaFreeNeuralNet(LoadedNeuralNet);
-			CudaFreeResizedNeuralNet(FullBatchNnViewer);
-			CudaFreeResizedNeuralNet(TestNnViewer);
+			// CudaFreeNeuralNetTrainer(Trainer);
+			// CudaFreeNeuralNet(NeuralNet);
+			// CudaFreeNeuralNet(LoadedNeuralNet);
+			// CudaFreeResizedNeuralNet(FullBatchNnViewer);
+			// CudaFreeResizedNeuralNet(TestNnViewer);
 			// SECTION STOP: test freeing neural nets
 		}
 		else

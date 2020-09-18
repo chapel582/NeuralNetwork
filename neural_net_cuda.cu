@@ -12,53 +12,6 @@
 #include <math.h>
 #include <assert.h>
 
-__device__
-uint32_t CudaGetMatrixArrayCount(matrix* Matrix)
-{
-	return Matrix->NumRows * Matrix->NumColumns;
-}
-
-__device__
-float CudaGetMatrixElement(matrix* Matrix, uint32_t Row, uint32_t Column)
-{
-	assert(Row < Matrix->NumRows);
-	assert(Column < Matrix->NumColumns);
-	float* Element = Matrix->Data + Row * Matrix->NumColumns + Column;
-	return *Element;
-}
-
-__device__
-float CudaGetMatrixElement(matrix* Matrix, uint32_t ElementIndex)
-{
-	// NOTE: made available if the Row, Column asserts in the standard 
-	// CONT: GetMatrixElement isn't needed. Mostly used for when you don't care
-	// CONT: if you have a row or column matrix
-	assert(ElementIndex < CudaGetMatrixArrayCount(Matrix));
-	float* Element = Matrix->Data + ElementIndex;
-	return *Element;
-}
-
-__device__
-void CudaSetMatrixElement(
-	matrix* Matrix, uint32_t Row, uint32_t Column, float Value
-)
-{
-	assert(Row < Matrix->NumRows);
-	assert(Column < Matrix->NumColumns);
-	float* Element = Matrix->Data + Row * Matrix->NumColumns + Column;
-	*Element = Value;
-}
-
-__device__
-void CudaSetMatrixElement(
-	matrix* Matrix, uint32_t ElementIndex, float Value
-)
-{
-	assert(ElementIndex < CudaGetMatrixArrayCount(Matrix));
-	float* Element = Matrix->Data + ElementIndex;
-	*Element = Value;
-}
-
 void CudaInitMatrix(matrix* Matrix, uint32_t NumRows, uint32_t NumColumns)
 {
 	*Matrix = {};
@@ -177,7 +130,7 @@ void CudaMatrixMultCore(
 {
 	uint32_t CommonDim = M1->NumColumns;
 	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -190,11 +143,11 @@ void CudaMatrixMultCore(
 		for(uint32_t DPIndex = 0; DPIndex < CommonDim; DPIndex++)
 		{
 			DotProduct += (
-				CudaGetMatrixElement(M1, Row, DPIndex) * 
-				CudaGetMatrixElement(M2, DPIndex, Column)
+				GetMatrixElement(M1, Row, DPIndex) * 
+				GetMatrixElement(M2, DPIndex, Column)
 			);
 		}
-		CudaSetMatrixElement(Result, Row, Column, DotProduct);
+		SetMatrixElement(Result, Row, Column, DotProduct);
 	}
 }
 
@@ -228,7 +181,7 @@ void CudaAddVectorToRowsCore(
 )
 {
 	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -236,11 +189,11 @@ void CudaAddVectorToRowsCore(
 	)
 	{
 		uint32_t Column = ResultIndex % ResultColumns;
-		CudaSetMatrixElement(
+		SetMatrixElement(
 			Result,
 			ResultIndex,
-			CudaGetMatrixElement(M1, ResultIndex) + 
-			CudaGetMatrixElement(Vector, Column)
+			GetMatrixElement(M1, ResultIndex) + 
+			GetMatrixElement(Vector, Column)
 		);
 	}
 }
@@ -292,18 +245,18 @@ void CudaMatrixAddCore(
 	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
-	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
 		ResultIndex += Stride
 	)
 	{
-		CudaSetMatrixElement(
+		SetMatrixElement(
 			Result,
 			ResultIndex,
-			CudaGetMatrixElement(M1, ResultIndex) + 
-			CudaGetMatrixElement(M2, ResultIndex)
+			GetMatrixElement(M1, ResultIndex) + 
+			GetMatrixElement(M2, ResultIndex)
 		);
 	}
 }
@@ -343,7 +296,7 @@ void CudaMatrixMultM1TransposeCore(
 {
 	uint32_t CommonDim = M1->NumRows;
 	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -356,11 +309,11 @@ void CudaMatrixMultM1TransposeCore(
 		for(uint32_t DPIndex = 0; DPIndex < CommonDim; DPIndex++)
 		{
 			DotProduct += (
-				CudaGetMatrixElement(M1, DPIndex, Row) * 
-				CudaGetMatrixElement(M2, DPIndex, Column)
+				GetMatrixElement(M1, DPIndex, Row) * 
+				GetMatrixElement(M2, DPIndex, Column)
 			);
 		}
-		CudaSetMatrixElement(Result, Row, Column, DotProduct);
+		SetMatrixElement(Result, Row, Column, DotProduct);
 	}
 }
 
@@ -397,7 +350,7 @@ void CudaMatrixMultM2TransposeCore(
 {
 	uint32_t CommonDim = M1->NumColumns;
 	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -410,11 +363,11 @@ void CudaMatrixMultM2TransposeCore(
 		for(uint32_t DPIndex = 0; DPIndex < CommonDim; DPIndex++)
 		{
 			DotProduct += (
-				CudaGetMatrixElement(M1, Row, DPIndex) * 
-				CudaGetMatrixElement(M2, Column, DPIndex)
+				GetMatrixElement(M1, Row, DPIndex) * 
+				GetMatrixElement(M2, Column, DPIndex)
 			);
 		}
-		CudaSetMatrixElement(Result, Row, Column, DotProduct);
+		SetMatrixElement(Result, Row, Column, DotProduct);
 	}
 }
 
@@ -454,7 +407,7 @@ void CudaMatrixMultM1M2TransposeCore(
 {
 	uint32_t CommonDim = M1->NumRows;
 	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -467,11 +420,11 @@ void CudaMatrixMultM1M2TransposeCore(
 		for(uint32_t DPIndex = 0; DPIndex < CommonDim; DPIndex++)
 		{
 			DotProduct += (
-				CudaGetMatrixElement(M1, DPIndex, Row) * 
-				CudaGetMatrixElement(M2, Column, DPIndex)
+				GetMatrixElement(M1, DPIndex, Row) * 
+				GetMatrixElement(M2, Column, DPIndex)
 			);
 		}
-		CudaSetMatrixElement(Result, Row, Column, DotProduct);
+		SetMatrixElement(Result, Row, Column, DotProduct);
 	}
 }
 
@@ -507,15 +460,15 @@ void CudaMatrixScalarMultCore(
 	float Scalar, matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
-	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
 		ResultIndex += Stride
 	)
 	{
-		float NewValue = Scalar * CudaGetMatrixElement(M1, ResultIndex);		
-		CudaSetMatrixElement(
+		float NewValue = Scalar * GetMatrixElement(M1, ResultIndex);		
+		SetMatrixElement(
 			Result,
 			ResultIndex,
 			NewValue
@@ -551,18 +504,18 @@ void CudaMatrixSubtractCore(
 	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
-	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
 		ResultIndex += Stride
 	)
 	{
-		CudaSetMatrixElement(
+		SetMatrixElement(
 			Result,
 			ResultIndex,
-			CudaGetMatrixElement(M1, ResultIndex) - 
-			CudaGetMatrixElement(M2, ResultIndex)
+			GetMatrixElement(M1, ResultIndex) - 
+			GetMatrixElement(M2, ResultIndex)
 		);
 	}
 }
@@ -605,8 +558,8 @@ void CudaMatrixScalarMultCoreColStride(
 	{
 		for(uint32_t Column = Start; Column < M1->NumColumns; Column += Stride)
 		{
-			float NewValue = Scalar * CudaGetMatrixElement(M1, Row, Column);
-			CudaSetMatrixElement(Result, Row, Column, NewValue);
+			float NewValue = Scalar * GetMatrixElement(M1, Row, Column);
+			SetMatrixElement(Result, Row, Column, NewValue);
 		}
 	}
 }
@@ -622,10 +575,10 @@ void CudaMatrixMeanCore(
 		for(uint32_t Col = Start; Col < M1->NumColumns; Col += Stride)
 		{
 			float NewValue = (
-				CudaGetMatrixElement(Result, 0, Col) + 
-				CudaGetMatrixElement(M1, Row, Col)
+				GetMatrixElement(Result, 0, Col) + 
+				GetMatrixElement(M1, Row, Col)
 			);
-			CudaSetMatrixElement(Result, 0, Col, NewValue);
+			SetMatrixElement(Result, 0, Col, NewValue);
 		}
 	}
 	CudaMatrixScalarMultCoreColStride(
@@ -860,7 +813,7 @@ void CudaReluForwardCore(
 	matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
-	uint32_t NumResultElements = CudaGetMatrixArrayCount(Result);
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -868,7 +821,7 @@ void CudaReluForwardCore(
 	)
 	{
 		float NewValue;
-		float OldValue = CudaGetMatrixElement(M1, ResultIndex);
+		float OldValue = GetMatrixElement(M1, ResultIndex);
 		if(OldValue < 0)
 		{
 			NewValue = 0;
@@ -877,7 +830,7 @@ void CudaReluForwardCore(
 		{
 			NewValue = OldValue;
 		}
-		CudaSetMatrixElement(Result, ResultIndex, NewValue);
+		SetMatrixElement(Result, ResultIndex, NewValue);
 	}
 	__syncthreads();
 }
@@ -914,7 +867,7 @@ void CudaReluBackCore(
 	uint32_t Stride
 )
 {
-	uint32_t NumResultElements = CudaGetMatrixArrayCount(LayerGradient);
+	uint32_t NumResultElements = GetMatrixArrayCount(LayerGradient);
 	for(
 		uint32_t ResultIndex = Start;
 		ResultIndex < NumResultElements;
@@ -922,18 +875,18 @@ void CudaReluBackCore(
 	)
 	{
 		float LayerGradientElement;
-		float InputValue = CudaGetMatrixElement(Inputs, ResultIndex);
+		float InputValue = GetMatrixElement(Inputs, ResultIndex);
 		if(InputValue <= 0)
 		{
 			LayerGradientElement = 0;
 		}
 		else
 		{
-			LayerGradientElement = CudaGetMatrixElement(
+			LayerGradientElement = GetMatrixElement(
 				NextLayerGradient, ResultIndex
 			);
 		}
-		CudaSetMatrixElement(LayerGradient, ResultIndex, LayerGradientElement);
+		SetMatrixElement(LayerGradient, ResultIndex, LayerGradientElement);
 	}
 	__syncthreads();
 }
