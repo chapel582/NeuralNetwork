@@ -261,41 +261,13 @@ void CudaMatrixAdd(matrix* M1, matrix* M2, matrix* Result)
 	cudaDeviceSynchronize();
 }
 
-__device__
-void CudaMatrixMultM1TransposeCore(
-	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
-)
-{
-	uint32_t CommonDim = M1->NumRows;
-	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = GetMatrixArrayCount(Result);
-	for(
-		uint32_t ResultIndex = Start;
-		ResultIndex < NumResultElements;
-		ResultIndex += Stride
-	)
-	{
-		uint32_t Row = ResultIndex / ResultColumns;
-		uint32_t Column = ResultIndex % ResultColumns;
-		float DotProduct = 0.0f;
-		for(uint32_t DPIndex = 0; DPIndex < CommonDim; DPIndex++)
-		{
-			DotProduct += (
-				GetMatrixElement(M1, DPIndex, Row) * 
-				GetMatrixElement(M2, DPIndex, Column)
-			);
-		}
-		SetMatrixElement(Result, Row, Column, DotProduct);
-	}
-}
-
 __global__
 void CudaMatrixMultM1TransposeThread(matrix* M1, matrix* M2, matrix* Result)
 {
 	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
 	uint32_t Stride = blockDim.x * gridDim.x;
 	
-	CudaMatrixMultM1TransposeCore(M1, M2, Result, Start, Stride);
+	MatrixMultM1TransposeCore(M1, M2, Result, Start, Stride);
 }
 
 void CudaMatrixMultM1Transpose(matrix* M1, matrix* M2, matrix* Result)
@@ -615,7 +587,7 @@ void CudaDenseForwardCore(
 {
 	MatrixMultCore(Inputs, &DenseLayer->Weights, Results, Start, Stride);
 	__syncthreads();
-	
+
 	CudaAddVectorToRowsCore(
 		Results, &DenseLayer->Bias, Results, Start, Stride
 	);
@@ -706,7 +678,7 @@ void CudaDenseBackCore(
 
 	// NOTE: Calculate the delta for the weights
 	matrix* WeightsDelta = &TrainData->WeightsDelta;
-	CudaMatrixMultM1TransposeCore(
+	MatrixMultM1TransposeCore(
 		Inputs, NextLayerGradient, WeightsDelta, Start, Stride
 	);
 	CudaMatrixScalarMultCore(

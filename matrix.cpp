@@ -134,7 +134,7 @@ void MatrixMultCore(
 {
 	// NOTE: Function to be called within one of your threads 
 	// CONT: (CPU or GPU doesn't matter)
-	
+
 	assert(M1->NumColumns == M2->NumRows);
 	uint32_t CommonDim = M1->NumColumns;
 	uint32_t ResultColumns = Result->NumColumns;
@@ -152,6 +152,41 @@ void MatrixMultCore(
 		{
 			DotProduct += (
 				GetMatrixElement(M1, Row, DPIndex) * 
+				GetMatrixElement(M2, DPIndex, Column)
+			);
+		}
+		SetMatrixElement(Result, Row, Column, DotProduct);
+	}
+}
+
+HOST_PREFIX DEVICE_PREFIX
+void MatrixMultM1TransposeCore(
+	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+)
+{
+	// NOTE: Function to be called within one of your threads 
+	// CONT: (CPU or GPU doesn't matter)
+
+	// NOTE: For transpose multiplication without allocating and initializing
+	// CONT: a new matrix
+	// NOTE: the number of rows in M1 should equal the number of rows in M2
+	
+	uint32_t CommonDim = M1->NumRows;
+	uint32_t ResultColumns = Result->NumColumns;
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
+	{
+		uint32_t Row = ResultIndex / ResultColumns;
+		uint32_t Column = ResultIndex % ResultColumns;
+		float DotProduct = 0.0f;
+		for(uint32_t DPIndex = 0; DPIndex < CommonDim; DPIndex++)
+		{
+			DotProduct += (
+				GetMatrixElement(M1, DPIndex, Row) * 
 				GetMatrixElement(M2, DPIndex, Column)
 			);
 		}
