@@ -550,27 +550,13 @@ DWORD WINAPI ReluBackThread(void* VoidArgs)
 	uint32_t Start = Args->Start;
 	uint32_t Stride = Args->Stride;
 	
-	uint32_t NumResultElements = GetMatrixArrayCount(LayerGradient);
-	for(
-		uint32_t ResultIndex = Start;
-		ResultIndex < NumResultElements;
-		ResultIndex += Stride
-	)
-	{
-		float LayerGradientElement;
-		float InputValue = GetMatrixElement(Inputs, ResultIndex);
-		if(InputValue <= 0)
-		{
-			LayerGradientElement = 0;
-		}
-		else
-		{
-			LayerGradientElement = GetMatrixElement(
-				NextLayerGradient, ResultIndex
-			);
-		}
-		SetMatrixElement(LayerGradient, ResultIndex, LayerGradientElement);
-	}
+	ReluBackCore(
+		Inputs,
+		NextLayerGradient,
+		LayerGradient,
+		Start,
+		Stride
+	);
 
 	return 0;
 }

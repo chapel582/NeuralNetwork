@@ -113,6 +113,14 @@ void ReluForwardCore(
 	matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
 );
 HOST_PREFIX DEVICE_PREFIX
+void ReluBackCore(
+	matrix* Inputs,
+	matrix* NextLayerGradient,
+	matrix* LayerGradient,
+	uint32_t Start,
+	uint32_t Stride
+);
+HOST_PREFIX DEVICE_PREFIX
 float MseForwardCore(
 	matrix* Predictions, matrix* Labels, uint32_t Start, uint32_t Stride
 );

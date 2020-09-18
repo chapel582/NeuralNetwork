@@ -90,6 +90,38 @@ void ReluForwardCore(
 }
 
 HOST_PREFIX DEVICE_PREFIX
+void ReluBackCore(
+	matrix* Inputs,
+	matrix* NextLayerGradient,
+	matrix* LayerGradient,
+	uint32_t Start,
+	uint32_t Stride
+)
+{
+	uint32_t NumResultElements = GetMatrixArrayCount(LayerGradient);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
+	{
+		float LayerGradientElement;
+		float InputValue = GetMatrixElement(Inputs, ResultIndex);
+		if(InputValue <= 0)
+		{
+			LayerGradientElement = 0;
+		}
+		else
+		{
+			LayerGradientElement = GetMatrixElement(
+				NextLayerGradient, ResultIndex
+			);
+		}
+		SetMatrixElement(LayerGradient, ResultIndex, LayerGradientElement);
+	}
+}
+
+HOST_PREFIX DEVICE_PREFIX
 float MseForwardCore(
 	matrix* Predictions, matrix* Labels, uint32_t Start, uint32_t Stride
 )
