@@ -88,3 +88,26 @@ void ReluForwardCore(
 		SetMatrixElement(Result, ResultIndex, NewValue);
 	}
 }
+
+HOST_PREFIX DEVICE_PREFIX
+float MseForwardCore(
+	matrix* Predictions, matrix* Labels, uint32_t Start, uint32_t Stride
+)
+{
+	float Result = 0.0f;
+	uint32_t NumRows = Predictions->NumRows;
+	uint32_t NumColumns = Predictions->NumColumns;
+	for(uint32_t Row = Start; Row < NumRows; Row += Stride)
+	{
+		for(uint32_t Col = 0; Col < NumColumns; Col++)
+		{
+			float Difference = (
+				GetMatrixElement(Predictions, Row, Col) - 
+				GetMatrixElement(Labels, Row, Col)
+			);
+			Result += Difference * Difference;
+		}
+	}
+
+	return Result;
+}

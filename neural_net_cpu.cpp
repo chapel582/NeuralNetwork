@@ -799,7 +799,7 @@ void CrossEntropySoftmaxBack(
 	);
 }
 
-DWORD WINAPI MeanSquaredForwardThread(void* VoidArgs)
+DWORD WINAPI MseForwardThread(void* VoidArgs)
 {
 	matrix_op_args* Args = (matrix_op_args*) VoidArgs;
 	matrix* Predictions = Args->M1;
@@ -807,25 +807,11 @@ DWORD WINAPI MeanSquaredForwardThread(void* VoidArgs)
 	int Start = Args->Start;
 	int Stride = Args->Stride;
 
-	float Result = 0.0f;
-	for(uint32_t Row = Start; Row < Predictions->NumRows; Row += Stride)
-	{
-		for(uint32_t Col = 0; Col < Predictions->NumColumns; Col++)
-		{
-			Result += (float) pow(
-				(
-					GetMatrixElement(Predictions, Row, Col) - 
-					GetMatrixElement(Labels, Row, Col)
-				),
-				2
-			);
-		}
-	}
-	Args->Float = Result;
+	Args->Float = MseForwardCore(Predictions, Labels, Start, Stride);
 	return 0;
 }
 
-float MeanSquaredForward(
+float MseForward(
 	matrix_op_jobs* MatrixOpJobs, matrix* Predictions, matrix* Labels
 )
 {
@@ -843,7 +829,7 @@ float MeanSquaredForward(
 		Args->Stride = MatrixOpJobs->NumThreads;
 		DWORD ThreadId;
 		MatrixOpJobs->Handles[ThreadIndex] = CreateThread(
-			NULL, 0, MeanSquaredForwardThread, Args, 0, &ThreadId 
+			NULL, 0, MseForwardThread, Args, 0, &ThreadId 
 		);
 	}
 	WaitForMultipleObjects(
@@ -1221,7 +1207,7 @@ void NeuralNetForward(
 				}
 				if(Labels != NULL)
 				{
-					Loss = MeanSquaredForward(MatrixOpJobs, Inputs, Labels);
+					Loss = MseForward(MatrixOpJobs, Inputs, Labels);
 				}
 				break;
 			}

@@ -660,6 +660,53 @@ void CudaReluBack(
 	cudaDeviceSynchronize();
 }
 
+__global__
+void CudaMseForwardThread(
+	matrix* Predictions, matrix* Labels, float* GlobalResult
+)
+{
+	extern __shared__ float Results[];
+
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
+	uint32_t Stride = gridDim.x * blockDim.x;
+
+	Results[Start] = 0.0f;
+	Results[Start] = MseForwardCore(Predictions, Labels, Start, Stride);
+	__syncthreads();
+
+	// NOTE: single-threaded summation
+	// TODO: could try a divide-and conquer algorithm for fast summation
+	if(Start == 0)
+	{
+		float Result = 0.0f;
+		for(int Index = 0; Index < Stride; Index++)
+		{
+			Result += Results[Index];
+		}
+
+		*GlobalResult = Result / (2.0f * Predictions->NumRows);
+	}
+}
+
+float CudaMseForward(matrix* Predictions, matrix* Labels)
+{
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(
+		GetMatrixArrayCount(Predictions), BlockSize, Device
+	);
+	float* Mse;
+	cudaMallocManaged(&Mse, sizeof(float));
+	size_t MemorySize = sizeof(float) * NumBlocks * BlockSize;
+	CudaMseForwardThread<<<NumBlocks, BlockSize, MemorySize>>>(
+		Predictions, Labels, Mse
+	);
+	cudaDeviceSynchronize();
+	float Result = *Mse;
+	cudaFree(Mse);
+	return Result;
+}
+
 void CudaAllocNeuralNet(
 	neural_net** Result,
 	uint32_t BatchSize,
@@ -958,12 +1005,7 @@ void CudaNeuralNetForward(
 				}
 				if(Labels != NULL)
 				{
-					matrix_op_jobs* MatrixOpJobs = NeuralNet->MatrixOpJobs;
-					Loss = MeanSquaredForward(
-						MatrixOpJobs,
-						Inputs,
-						Labels
-					);
+					Loss = CudaMseForward(Inputs, Labels);
 				}
 				break;
 			}

@@ -658,7 +658,7 @@ int main(int argc, char* argv[])
 		AllocMatrix(&Labels, BatchSize, NumClasses);
 		FillOneHotMatrix(Labels);
 
-		float Loss = MeanSquaredForward(MatrixOpJobs, Predictions, Labels);
+		float Loss = MseForward(MatrixOpJobs, Predictions, Labels);
 		TestFloatResult(
 			Loss,
 			FilePathBuffer, 

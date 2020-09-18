@@ -786,7 +786,7 @@ int main(int argc, char* argv[])
 	}
 	// SECTION STOP: More one neuron training
 
-	// SECTION START: threaded one neuron training
+	// SECTION START: one neuron training
 	{
 		uint32_t BatchSize = 6;
 		uint32_t InputDim = 1;
@@ -849,9 +849,9 @@ int main(int argc, char* argv[])
 			EndianString
 		);
 	}
-	// SECTION STOP: threaded one neuron training
+	// SECTION STOP: one neuron training
 
-	// SECTION START: threaded two neuron training
+	// SECTION START: two neuron training
 	{
 		uint32_t BatchSize = 2;
 		uint32_t InputDim = 2;
@@ -922,9 +922,9 @@ int main(int argc, char* argv[])
 			EndianString
 		);
 	}
-	// SECTION STOP: threaded two neuron training
+	// SECTION STOP: two neuron training
 
-	// SECTION START: threaded one layer training and prediction
+	// SECTION START: one layer training and prediction
 	{
 		uint32_t BatchSize = 2;
 		uint32_t InputDim = 2;
@@ -994,9 +994,9 @@ int main(int argc, char* argv[])
 			EndianString
 		);
 	}
-	// SECTION STOP: threaded one layer training and prediction
+	// SECTION STOP: one layer training and prediction
 
-	// SECTION START: threaded one layer training and prediction
+	// SECTION START: two layer training and prediction
 	{
 		uint32_t BatchSize = 2;
 		uint32_t InputDim = 2;
@@ -1018,7 +1018,7 @@ int main(int argc, char* argv[])
 		CudaAddDense(NeuralNet, OutputDim);
 
 		matrix* Labels;
-		AllocMatrix(&Labels, BatchSize, OutputDim);
+		CudaAllocMatrix(&Labels, BatchSize, OutputDim);
 		
 		SetMatrixElement(Labels, 0, 0, 11);
 		SetMatrixElement(Labels, 0, 1, 15);
@@ -1060,7 +1060,7 @@ int main(int argc, char* argv[])
 			EndianString
 		);
 	}
-	// SECTION STOP: threaded one layer training and prediction
+	// SECTION STOP: two layer training and prediction
 
 	// SECTION START: XOR Forward
 	{

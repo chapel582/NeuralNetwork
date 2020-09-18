@@ -97,7 +97,7 @@ struct neural_net_trainer
 
 void InitDenseLayers(neural_net* NeuralNet);
 void AllocMatrixOpJobs(matrix_op_jobs** Result, uint32_t NumThreads);
-float MeanSquaredForward(
+float MseForward(
 	matrix_op_jobs* MatrixOpJobs, matrix* Predictions, matrix* Labels
 );
 void AddMeanSquared(neural_net* NeuralNet);
@@ -111,6 +111,10 @@ void MeanSquaredBack(
 HOST_PREFIX DEVICE_PREFIX
 void ReluForwardCore(
 	matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
+);
+HOST_PREFIX DEVICE_PREFIX
+float MseForwardCore(
+	matrix* Predictions, matrix* Labels, uint32_t Start, uint32_t Stride
 );
 
 #define NEURAL_NET_H
