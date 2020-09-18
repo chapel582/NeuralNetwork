@@ -287,34 +287,6 @@ void CudaMatrixMultM1Transpose(matrix* M1, matrix* M2, matrix* Result)
 	cudaDeviceSynchronize();
 }
 
-__device__
-void CudaMatrixMultM2TransposeCore(
-	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
-)
-{
-	uint32_t CommonDim = M1->NumColumns;
-	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = GetMatrixArrayCount(Result);
-	for(
-		uint32_t ResultIndex = Start;
-		ResultIndex < NumResultElements;
-		ResultIndex += Stride
-	)
-	{
-		uint32_t Row = ResultIndex / ResultColumns;
-		uint32_t Column = ResultIndex % ResultColumns;
-		float DotProduct = 0.0f;
-		for(uint32_t DPIndex = 0; DPIndex < CommonDim; DPIndex++)
-		{
-			DotProduct += (
-				GetMatrixElement(M1, Row, DPIndex) * 
-				GetMatrixElement(M2, Column, DPIndex)
-			);
-		}
-		SetMatrixElement(Result, Row, Column, DotProduct);
-	}
-}
-
 __global__
 void CudaMatrixMultM2TransposeThread(matrix* M1, matrix* M2, matrix* Result)
 {
@@ -324,7 +296,7 @@ void CudaMatrixMultM2TransposeThread(matrix* M1, matrix* M2, matrix* Result)
 	// NOTE: this basically calculates the # of threads
 	uint32_t Stride = blockDim.x * gridDim.x;
 
-	CudaMatrixMultM2TransposeCore(M1, M2, Result, Start, Stride);
+	MatrixMultM2TransposeCore(M1, M2, Result, Start, Stride);
 }
 
 void CudaMatrixMultM2Transpose(matrix* M1, matrix* M2, matrix* Result)
@@ -668,7 +640,7 @@ void CudaDenseBackCore(
 	matrix* Weights = &DenseLayer->Weights;
 
 	// NOTE: Calculate this layer's gradient
-	CudaMatrixMultM2TransposeCore(
+	MatrixMultM2TransposeCore(
 		NextLayerGradient,
 		Weights,
 		&TrainData->LayerGradient,
