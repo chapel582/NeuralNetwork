@@ -347,34 +347,6 @@ void MatrixSubtract(
 	);
 }
 
-void AddVectorToRowsCore(
-	matrix* M1, matrix* Vector, matrix* Result, int Start, int Stride
-)
-{
-	/*NOTE:
-	Because the vector is one-dimensional, it doesn't matter whether you pass 
-	Col into the row or the column 
-	a nice consequence of this is that it doesn't matter whether you pass in a 
-	row vector or a column vector. It will project nicely as long as the non-one
-	dimension is equal to the number of columns of M1
-	*/
-	for(uint32_t Row = Start; Row < M1->NumRows; Row += Stride)
-	{
-		for(uint32_t Col = 0; Col < M1->NumColumns; Col++)
-		{
-			SetMatrixElement(
-				Result,
-				Row,
-				Col,
-				(
-					GetMatrixElement(M1, Row, Col) + 
-					GetMatrixElement(Vector, Col)
-				)
-			);
-		}
-	}
-}
-
 DWORD WINAPI AddVectorToRowsThread(void* VoidArgs)
 {
 	matrix_op_args* Args = (matrix_op_args*) VoidArgs;

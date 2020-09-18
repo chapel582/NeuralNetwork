@@ -59,6 +59,10 @@ HOST_PREFIX DEVICE_PREFIX
 void MatrixSubtractCore(
 	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
 );
+HOST_PREFIX DEVICE_PREFIX
+void AddVectorToRowsCore(
+	matrix* M1, matrix* Vector, matrix* Result, uint32_t Start, uint32_t Stride
+);
 
 #define MATRIX_H
 

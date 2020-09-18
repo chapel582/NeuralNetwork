@@ -147,29 +147,6 @@ void CudaMatrixMult(matrix* M1, matrix* M2, matrix* Result)
 	cudaDeviceSynchronize();
 }
 
-__device__
-void CudaAddVectorToRowsCore(
-	matrix* M1, matrix* Vector, matrix* Result, uint32_t Start, uint32_t Stride
-)
-{
-	uint32_t ResultColumns = Result->NumColumns;
-	uint32_t NumResultElements = GetMatrixArrayCount(Result);
-	for(
-		uint32_t ResultIndex = Start;
-		ResultIndex < NumResultElements;
-		ResultIndex += Stride
-	)
-	{
-		uint32_t Column = ResultIndex % ResultColumns;
-		SetMatrixElement(
-			Result,
-			ResultIndex,
-			GetMatrixElement(M1, ResultIndex) + 
-			GetMatrixElement(Vector, Column)
-		);
-	}
-}
-
 __global__
 void CudaAddVectorToRowsThread(matrix* M1, matrix* Vector, matrix* Result)
 {
@@ -187,7 +164,7 @@ void CudaAddVectorToRowsThread(matrix* M1, matrix* Vector, matrix* Result)
 	// NOTE: this basically calculates the # of threads
 	uint32_t Stride = blockDim.x * gridDim.x;
 
-	CudaAddVectorToRowsCore(M1, Vector, Result, Start, Stride);
+	AddVectorToRowsCore(M1, Vector, Result, Start, Stride);
 }
 
 void CudaAddVectorToRows(matrix* M1, matrix* Vector, matrix* Result)
@@ -490,7 +467,7 @@ void CudaDenseForwardCore(
 	MatrixMultCore(Inputs, &DenseLayer->Weights, Results, Start, Stride);
 	__syncthreads();
 
-	CudaAddVectorToRowsCore(
+	AddVectorToRowsCore(
 		Results, &DenseLayer->Bias, Results, Start, Stride
 	);
 	__syncthreads();
