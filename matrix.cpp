@@ -341,17 +341,22 @@ void MatrixScalarMultCore(
 	}
 }
 
-// HOST_PREFIX DEVICE_PREFIX
-// void MatrixScalarMultCoreColStride(
-// 	float Scalar, matrix* M1, matrix* Result, int Start, int Stride
-// )
-// {
-// 	for(uint32_t Row = 0; Row < M1->NumRows; Row++)
-// 	{
-// 		for(uint32_t Column = Start; Column < M1->NumColumns; Column += Stride)
-// 		{
-// 			float NewValue = Scalar * GetMatrixElement(M1, Row, Column);
-// 			SetMatrixElement(Result, Row, Column, NewValue);
-// 		}
-// 	}
-// }
+HOST_PREFIX DEVICE_PREFIX
+void MatrixMeanCore(matrix* M1, matrix* Result, int Start, int Stride)
+{
+	MatrixScalarMultCore(0.0f, Result, Result, Start, Stride);
+	for(uint32_t Row = 0; Row < M1->NumRows; Row++)
+	{
+		for(uint32_t Col = Start; Col < M1->NumColumns; Col += Stride)
+		{
+			float NewValue = (
+				GetMatrixElement(Result, 0, Col) + 
+				GetMatrixElement(M1, Row, Col)
+			);
+			SetMatrixElement(Result, 0, Col, NewValue);
+		}
+	}
+	MatrixScalarMultCore(
+		1.0f / M1->NumRows, Result, Result, Start, Stride
+	);
+}

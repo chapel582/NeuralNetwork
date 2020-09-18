@@ -338,25 +338,6 @@ void AddVectorToRows(
 	);
 }
 
-void MatrixMeanCore(matrix* M1, matrix* Result, int Start, int Stride)
-{
-	MatrixScalarMultCore(0.0f, Result, Result, Start, Stride);
-	for(uint32_t Row = 0; Row < M1->NumRows; Row++)
-	{
-		for(uint32_t Col = Start; Col < M1->NumColumns; Col += Stride)
-		{
-			float NewValue = (
-				GetMatrixElement(Result, 0, Col) + 
-				GetMatrixElement(M1, Row, Col)
-			);
-			SetMatrixElement(Result, 0, Col, NewValue);
-		}
-	}
-	MatrixScalarMultCore(
-		1.0f / M1->NumRows, Result, Result, Start, Stride
-	);
-}
-
 DWORD WINAPI MatrixMeanThread(void* VoidArgs)
 {
 	matrix_op_args* Args = (matrix_op_args*) VoidArgs;
