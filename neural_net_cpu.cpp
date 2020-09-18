@@ -173,26 +173,6 @@ void MatrixScalarMultCoreColStride(
 	}
 }
 
-void MatrixScalarMultCore(
-	float Scalar, matrix* M1, matrix* Result, int Start, int Stride
-)
-{
-	uint32_t NumResultElements = GetMatrixArrayCount(Result);
-	for(
-		uint32_t ResultIndex = Start;
-		ResultIndex < NumResultElements;
-		ResultIndex += Stride
-	)
-	{
-		float NewValue = Scalar * GetMatrixElement(M1, ResultIndex);		
-		SetMatrixElement(
-			Result,
-			ResultIndex,
-			NewValue
-		);
-	}
-}
-
 DWORD WINAPI MatrixScalarMultThread(void* VoidArgs)
 {
 	matrix_op_args* Job = (matrix_op_args*) VoidArgs;

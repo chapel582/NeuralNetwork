@@ -63,6 +63,10 @@ HOST_PREFIX DEVICE_PREFIX
 void AddVectorToRowsCore(
 	matrix* M1, matrix* Vector, matrix* Result, uint32_t Start, uint32_t Stride
 );
+HOST_PREFIX DEVICE_PREFIX
+void MatrixScalarMultCore(
+	float Scalar, matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
+);
 
 #define MATRIX_H
 

@@ -299,27 +299,6 @@ void CudaMatrixMultM1M2Transpose(matrix* M1, matrix* M2, matrix* Result)
 	cudaDeviceSynchronize();
 }
 
-__device__
-void CudaMatrixScalarMultCore(
-	float Scalar, matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
-)
-{
-	uint32_t NumResultElements = GetMatrixArrayCount(Result);
-	for(
-		uint32_t ResultIndex = Start;
-		ResultIndex < NumResultElements;
-		ResultIndex += Stride
-	)
-	{
-		float NewValue = Scalar * GetMatrixElement(M1, ResultIndex);		
-		SetMatrixElement(
-			Result,
-			ResultIndex,
-			NewValue
-		);
-	}
-}
-
 __global__
 void CudaMatrixScalarMultThread(float Scalar, matrix* M1, matrix* Result)
 {
@@ -329,7 +308,7 @@ void CudaMatrixScalarMultThread(float Scalar, matrix* M1, matrix* Result)
 	// NOTE: this basically calculates the # of threads
 	uint32_t Stride = blockDim.x * gridDim.x;
 
-	CudaMatrixScalarMultCore(Scalar, M1, Result, Start, Stride);
+	MatrixScalarMultCore(Scalar, M1, Result, Start, Stride);
 }
 
 void CudaMatrixScalarMult(float Scalar, matrix* M1, matrix* Result)
@@ -560,7 +539,7 @@ void CudaDenseBackCore(
 	MatrixMultM1TransposeCore(
 		Inputs, NextLayerGradient, WeightsDelta, Start, Stride
 	);
-	CudaMatrixScalarMultCore(
+	MatrixScalarMultCore(
 		TrainData->LearningRate, WeightsDelta, WeightsDelta, Start, Stride
 	);
 	
@@ -571,7 +550,7 @@ void CudaDenseBackCore(
 	matrix* Bias = &DenseLayer->Bias;
 	matrix* BiasDelta = &TrainData->BiasDelta;
 	CudaMatrixMeanCore(NextLayerGradient, BiasDelta, Start, Stride);
-	CudaMatrixScalarMultCore(
+	MatrixScalarMultCore(
 		TrainData->LearningRate, BiasDelta, BiasDelta, Start, Stride
 	);
 

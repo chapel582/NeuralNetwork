@@ -317,3 +317,24 @@ void AddVectorToRowsCore(
 		);
 	}
 }
+
+HOST_PREFIX DEVICE_PREFIX
+void MatrixScalarMultCore(
+	float Scalar, matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
+)
+{
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
+	{
+		float NewValue = Scalar * GetMatrixElement(M1, ResultIndex);		
+		SetMatrixElement(
+			Result,
+			ResultIndex,
+			NewValue
+		);
+	}
+}
