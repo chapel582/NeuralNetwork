@@ -660,16 +660,16 @@ void CudaReluBack(
 	cudaDeviceSynchronize();
 }
 
-__global__
-void CudaMseForwardThread(
-	matrix* Predictions, matrix* Labels, float* GlobalResult
+__device__
+void CudaMseForwardCore(
+	matrix* Predictions,
+	matrix* Labels,
+	float* GlobalResult,
+	float* Results,
+	uint32_t Start,
+	uint32_t Stride
 )
 {
-	extern __shared__ float Results[];
-
-	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
-	uint32_t Stride = gridDim.x * blockDim.x;
-
 	Results[Start] = 0.0f;
 	Results[Start] = MseForwardCore(Predictions, Labels, Start, Stride);
 	__syncthreads();
@@ -686,6 +686,21 @@ void CudaMseForwardThread(
 
 		*GlobalResult = Result / (2.0f * Predictions->NumRows);
 	}
+}
+
+__global__
+void CudaMseForwardThread(
+	matrix* Predictions, matrix* Labels, float* GlobalResult
+)
+{
+	extern __shared__ float Results[];
+
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
+	uint32_t Stride = gridDim.x * blockDim.x;
+
+	CudaMseForwardCore(
+		Predictions, Labels, GlobalResult, Results, Start, Stride
+	);
 }
 
 float CudaMseForward(matrix* Predictions, matrix* Labels)
