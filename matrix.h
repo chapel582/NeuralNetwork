@@ -67,6 +67,10 @@ HOST_PREFIX DEVICE_PREFIX
 void MatrixScalarMultCore(
 	float Scalar, matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
 );
+// HOST_PREFIX DEVICE_PREFIX
+// void MatrixScalarMultCoreColStride(
+// 	float Scalar, matrix* M1, matrix* Result, int Start, int Stride
+// );
 
 #define MATRIX_H
 

@@ -158,21 +158,6 @@ void CopyMatrix(
 	);
 }
 
-void MatrixScalarMultCoreColStride(
-	float Scalar, matrix* M1, matrix* Result, int Start, int Stride
-)
-{
-	// NOTE: the number of columns in M1 should equal the number of rows in M2
-	for(uint32_t Row = 0; Row < M1->NumRows; Row++)
-	{
-		for(uint32_t Column = Start; Column < M1->NumColumns; Column += Stride)
-		{
-			float NewValue = Scalar * GetMatrixElement(M1, Row, Column);
-			SetMatrixElement(Result, Row, Column, NewValue);
-		}
-	}
-}
-
 DWORD WINAPI MatrixScalarMultThread(void* VoidArgs)
 {
 	matrix_op_args* Job = (matrix_op_args*) VoidArgs;
@@ -355,7 +340,7 @@ void AddVectorToRows(
 
 void MatrixMeanCore(matrix* M1, matrix* Result, int Start, int Stride)
 {
-	MatrixScalarMultCoreColStride(0.0f, Result, Result, Start, Stride);
+	MatrixScalarMultCore(0.0f, Result, Result, Start, Stride);
 	for(uint32_t Row = 0; Row < M1->NumRows; Row++)
 	{
 		for(uint32_t Col = Start; Col < M1->NumColumns; Col += Stride)
@@ -367,7 +352,7 @@ void MatrixMeanCore(matrix* M1, matrix* Result, int Start, int Stride)
 			SetMatrixElement(Result, 0, Col, NewValue);
 		}
 	}
-	MatrixScalarMultCoreColStride(
+	MatrixScalarMultCore(
 		1.0f / M1->NumRows, Result, Result, Start, Stride
 	);
 }

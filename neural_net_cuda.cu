@@ -350,28 +350,11 @@ void CudaMatrixSubtract(matrix* M1, matrix* M2, matrix* Result)
 }
 
 __device__
-void CudaMatrixScalarMultCoreColStride(
-	float Scalar, matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
-)
-{
-	// NOTE: the number of columns in M1 should equal the number of rows in M2
-	// NOTE: mostly a helper function for the mean function
-	for(uint32_t Row = 0; Row < M1->NumRows; Row++)
-	{
-		for(uint32_t Column = Start; Column < M1->NumColumns; Column += Stride)
-		{
-			float NewValue = Scalar * GetMatrixElement(M1, Row, Column);
-			SetMatrixElement(Result, Row, Column, NewValue);
-		}
-	}
-}
-
-__device__
 void CudaMatrixMeanCore(
 	matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
 )
 {
-	CudaMatrixScalarMultCoreColStride(0.0f, Result, Result, Start, Stride);
+	MatrixScalarMultCore(0.0f, Result, Result, Start, Stride);
 	for(uint32_t Row = 0; Row < M1->NumRows; Row++)
 	{
 		for(uint32_t Col = Start; Col < M1->NumColumns; Col += Stride)
@@ -383,7 +366,7 @@ void CudaMatrixMeanCore(
 			SetMatrixElement(Result, 0, Col, NewValue);
 		}
 	}
-	CudaMatrixScalarMultCoreColStride(
+	MatrixScalarMultCore(
 		1.0f / M1->NumRows, Result, Result, Start, Stride
 	);
 }
