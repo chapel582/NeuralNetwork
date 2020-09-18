@@ -270,3 +270,27 @@ void MatrixAddCore(
 		);
 	}
 }
+
+HOST_PREFIX DEVICE_PREFIX
+void MatrixSubtractCore(
+	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
+)
+{
+	assert(M1->NumRows == M2->NumRows);
+	assert(M1->NumColumns == M2->NumColumns);
+
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
+	{
+		SetMatrixElement(
+			Result,
+			ResultIndex,
+			GetMatrixElement(M1, ResultIndex) -
+			GetMatrixElement(M2, ResultIndex)
+		);
+	}
+}

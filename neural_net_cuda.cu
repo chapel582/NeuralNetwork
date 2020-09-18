@@ -366,27 +366,6 @@ void CudaMatrixScalarMult(float Scalar, matrix* M1, matrix* Result)
 	cudaDeviceSynchronize();
 }
 
-__device__
-void CudaMatrixSubtractCore(
-	matrix* M1, matrix* M2, matrix* Result, uint32_t Start, uint32_t Stride
-)
-{
-	uint32_t NumResultElements = GetMatrixArrayCount(Result);
-	for(
-		uint32_t ResultIndex = Start;
-		ResultIndex < NumResultElements;
-		ResultIndex += Stride
-	)
-	{
-		SetMatrixElement(
-			Result,
-			ResultIndex,
-			GetMatrixElement(M1, ResultIndex) - 
-			GetMatrixElement(M2, ResultIndex)
-		);
-	}
-}
-
 __global__
 void CudaMatrixSubtractThread(matrix* M1, matrix* M2, matrix* Result)
 {
@@ -396,7 +375,7 @@ void CudaMatrixSubtractThread(matrix* M1, matrix* M2, matrix* Result)
 	// NOTE: this basically calculates the # of threads
 	uint32_t Stride = blockDim.x * gridDim.x;
 
-	CudaMatrixSubtractCore(M1, M2, Result, Start, Stride);
+	MatrixSubtractCore(M1, M2, Result, Start, Stride);
 }
 
 void CudaMatrixSubtract(matrix* M1, matrix* M2, matrix* Result)
