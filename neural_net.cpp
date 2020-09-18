@@ -62,3 +62,29 @@ void InitDenseLayers(neural_net* NeuralNet)
 		LayerLink = LayerLink->Next;
 	}
 }
+
+HOST_PREFIX DEVICE_PREFIX
+void ReluForwardCore(
+	matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
+)
+{
+	uint32_t NumResultElements = GetMatrixArrayCount(Result);
+	for(
+		uint32_t ResultIndex = Start;
+		ResultIndex < NumResultElements;
+		ResultIndex += Stride
+	)
+	{
+		float NewValue;
+		float OldValue = GetMatrixElement(M1, ResultIndex);
+		if(OldValue < 0)
+		{
+			NewValue = 0;
+		}
+		else
+		{
+			NewValue = OldValue;
+		}
+		SetMatrixElement(Result, ResultIndex, NewValue);
+	}
+}

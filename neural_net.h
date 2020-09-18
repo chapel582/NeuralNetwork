@@ -1,5 +1,6 @@
 #ifndef NEURAL_NET_H
 
+#include "project_flags.h"
 #include "matrix.h"
 
 // TODO: Need to have a platform independent way of handling threads
@@ -106,5 +107,11 @@ void MeanSquaredBack(
 	matrix* Labels, 
 	mse_train_data* TrainData
 );
+
+HOST_PREFIX DEVICE_PREFIX
+void ReluForwardCore(
+	matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
+);
+
 #define NEURAL_NET_H
 #endif
