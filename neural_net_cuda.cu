@@ -11,6 +11,8 @@
 #include <string.h>
 #include <math.h>
 #include <assert.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
 
 void CudaInitMatrix(matrix* Matrix, uint32_t NumRows, uint32_t NumColumns)
 {
@@ -405,12 +407,9 @@ void CudaDenseForwardCore(
 )
 {
 	MatrixMultCore(Inputs, &DenseLayer->Weights, Results, Start, Stride);
-	__syncthreads();
-
 	AddVectorToRowsCore(
 		Results, &DenseLayer->Bias, Results, Start, Stride
 	);
-	__syncthreads();
 }
 
 __global__
@@ -517,7 +516,6 @@ void CudaDenseBackCore(
 
 	// NOTE: update bias
 	MatrixAddCore(Bias, BiasDelta, Bias, Start, Stride);
-	__syncthreads();
 }
 
 __global__
@@ -628,10 +626,9 @@ void CudaReluBack(
 }
 
 __device__
-void CudaMseForwardCore(
+float CudaMseForwardCore(
 	matrix* Predictions,
 	matrix* Labels,
-	float* GlobalResult,
 	float* Results,
 	uint32_t Start,
 	uint32_t Stride
@@ -643,16 +640,17 @@ void CudaMseForwardCore(
 
 	// NOTE: single-threaded summation
 	// TODO: could try a divide-and conquer algorithm for fast summation
+	float Result = 0.0f;	
 	if(Start == 0)
 	{
-		float Result = 0.0f;
 		for(int Index = 0; Index < Stride; Index++)
 		{
 			Result += Results[Index];
 		}
 
-		*GlobalResult = Result / (2.0f * Predictions->NumRows);
+		Result /= (2.0f * Predictions->NumRows);
 	}
+	return Result;
 }
 
 __global__
@@ -665,9 +663,13 @@ void CudaMseForwardThread(
 	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
 	uint32_t Stride = gridDim.x * blockDim.x;
 
-	CudaMseForwardCore(
-		Predictions, Labels, GlobalResult, Results, Start, Stride
+	float Result = CudaMseForwardCore(
+		Predictions, Labels, Results, Start, Stride
 	);
+	if(Start == 0)
+	{
+		*GlobalResult = Result;
+	}
 }
 
 float CudaMseForward(matrix* Predictions, matrix* Labels)
@@ -753,6 +755,7 @@ void CudaAllocNeuralNet(
 	*NeuralNet = {};
 	NeuralNet->BatchSize = BatchSize;
 	NeuralNet->InputDim = InputDim;
+	// TODO: delete this op job allocation
 	AllocMatrixOpJobs((matrix_op_jobs**) &NeuralNet->MatrixOpJobs, CpuThreads);
 }
 
@@ -983,38 +986,44 @@ void CudaFreeResizedNeuralNet(neural_net* NeuralNet)
 	}
 }
 
-void CudaNeuralNetForward(
+__device__
+float CudaNeuralNetForwardCore(
 	neural_net* NeuralNet,
 	matrix* Inputs,
 	matrix* Labels,
-	matrix** Predictions,
-	float* LossResult
+	float* MseResults,
+	uint32_t ThreadIndex,
+	uint32_t ThreadCount
 )
 {
 	matrix* Outputs = NULL;
 	layer_link* LayerLink = NeuralNet->FirstLink;
 	float Loss = -1.0f;
+	uint32_t NumLayers = NeuralNet->NumLayers;
 	for(
 		uint32_t LayerIndex = 0;
-		LayerIndex < NeuralNet->NumLayers;
+		LayerIndex < NumLayers;
 		LayerIndex++
 	)
 	{
 		Outputs = LayerLink->Output;
+		
 		switch(LayerLink->Type)
 		{
 			case(LayerType_Dense):
 			{
-				CudaDenseForward(
+				CudaDenseForwardCore(
 					Inputs,
 					(dense_layer*) LayerLink->Data,
-					Outputs
+					Outputs,
+					ThreadIndex,
+					ThreadCount
 				);
 				break;
 			}
 			case(LayerType_Relu):
 			{
-				CudaReluForward(Inputs, Outputs);
+				ReluForwardCore(Inputs, Outputs, ThreadIndex, ThreadCount);
 				break;
 			}
 			case(LayerType_Softmax):
@@ -1033,13 +1042,15 @@ void CudaNeuralNetForward(
 			}
 			case(LayerType_Mse):
 			{
-				if(Predictions)
-				{
-					*Predictions = Inputs;
-				}
 				if(Labels != NULL)
 				{
-					Loss = CudaMseForward(Inputs, Labels);
+					Loss = CudaMseForwardCore(
+						Inputs,
+						Labels,
+						MseResults,
+						ThreadIndex,
+						ThreadCount
+					);
 				}
 				break;
 			}
@@ -1051,18 +1062,72 @@ void CudaNeuralNetForward(
 		}
 		Inputs = Outputs;
 		LayerLink = LayerLink->Next;
+		__syncthreads();
 	}
 
-	if(Predictions != NULL && *Predictions == NULL)
-	{
-		// NOTE: if we didn't have a loss function, this is where we get the
-		// CONT: predictions from
-		*Predictions = Outputs;
-	}
-	if(LossResult)
+	return Loss;
+}
+
+__global__
+void CudaNeuralNetForwardThread(
+	neural_net* NeuralNet,
+	matrix* Inputs,
+	matrix* Labels,
+	float* LossResult
+)
+{
+	extern __shared__ float MseResults[];
+
+	uint32_t ThreadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	uint32_t NumThreads = gridDim.x * blockDim.x;
+
+	float Loss = CudaNeuralNetForwardCore(
+		NeuralNet,
+		Inputs,
+		Labels,
+		MseResults,
+		ThreadIndex,
+		NumThreads
+	);
+	__syncthreads();
+	if(ThreadIndex == 0 && LossResult)
 	{
 		*LossResult = Loss;
 	}
+}
+
+cudaError_t CudaNeuralNetForward(
+	neural_net* NeuralNet,
+	matrix* Inputs,
+	matrix* Labels,
+	matrix** Predictions,
+	float* LossResult
+)
+{
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetMaxNumBlocks(Device);
+	
+	size_t MemorySize;
+	if(Labels)
+	{
+		MemorySize = Labels->NumRows * sizeof(float);	
+	}
+	else
+	{
+		MemorySize = 1;
+	}
+	
+	CudaNeuralNetForwardThread<<<NumBlocks, BlockSize, MemorySize>>>(
+		NeuralNet, Inputs, Labels, LossResult
+	);
+	cudaError_t Error = cudaDeviceSynchronize();
+
+	if(Predictions)
+	{
+		*Predictions = GetOutput(NeuralNet);
+	}
+	return Error;
 }
 
 void CudaAllocNeuralNetTrainer(
@@ -1076,7 +1141,7 @@ void CudaAllocNeuralNetTrainer(
 	{
 		case(LayerType_Mse):
 		{
-			AddMeanSquared(NeuralNet);
+			CudaAddMeanSquared(NeuralNet);
 			break;
 		}
 		case(LayerType_CrossEntropy):
@@ -1257,7 +1322,8 @@ void CudaTrainNeuralNet(
 	matrix* Labels,
 	uint32_t Epochs,
 	bool ShouldInitDenseLayers = true,
-	bool PrintStatus = false
+	bool PrintStatus = false,
+	float* Loss = NULL
 )
 {
 	if(ShouldInitDenseLayers)
@@ -1266,7 +1332,13 @@ void CudaTrainNeuralNet(
 	}
 
 	layer_link* LayerLink;
-	float Loss = -1.0f;
+
+	bool FreeAtEnd = false;
+	if(Loss == NULL)
+	{
+		cudaMallocManaged(&Loss, sizeof(float));
+	}
+
 	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
 	{
 		matrix* Predictions = NULL;
@@ -1275,11 +1347,11 @@ void CudaTrainNeuralNet(
 			Inputs,
 			Labels,
 			&Predictions,
-			&Loss
+			Loss
 		);
 		if(PrintStatus)
 		{
-			printf("Epoch %d Loss: %f\n", Epoch, Loss);
+			printf("Epoch %d Loss: %f\n", Epoch, *Loss);
 		}
 
 		matrix* NextLayerGradient = NULL;
@@ -1356,6 +1428,11 @@ void CudaTrainNeuralNet(
 			LayerLink = PreviousLayer;
 		}
 	}
+
+	if(FreeAtEnd)
+	{
+		cudaFree(Loss);
+	}
 }
 
 void CudaTrainNeuralNetMiniBatch(
@@ -1368,7 +1445,8 @@ void CudaTrainNeuralNetMiniBatch(
 	bool PrintStatus = false,
 	float TrainingAccuracyThreshold = 1.1f,
 	float LossThreshold = -1.0f,
-	neural_net* FullBatchNnViewer = NULL
+	neural_net* FullBatchNnViewer = NULL,
+	float* Loss = NULL
 )
 {
 	// NOTE: Train with minibatches sampled from Inputs
@@ -1435,7 +1513,8 @@ void CudaTrainNeuralNetMiniBatch(
 				MiniBatchLabels,
 				1,
 				false,
-				false
+				false,
+				Loss
 			);
 		}
 

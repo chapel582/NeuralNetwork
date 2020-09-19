@@ -64,6 +64,19 @@ void InitDenseLayers(neural_net* NeuralNet)
 }
 
 HOST_PREFIX DEVICE_PREFIX
+matrix* GetOutput(neural_net* NeuralNet)
+{
+	// NOTE: returns a pointer to the output of the last non-loss layer
+	layer_link* LayerLink = NeuralNet->LastLink;
+	if(LayerLink->Type == LayerType_Mse)
+	{
+		LayerLink = LayerLink->Previous;
+	}
+	
+	return LayerLink->Output;
+}
+
+HOST_PREFIX DEVICE_PREFIX
 void ReluForwardCore(
 	matrix* M1, matrix* Result, uint32_t Start, uint32_t Stride
 )
