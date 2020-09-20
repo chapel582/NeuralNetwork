@@ -407,6 +407,7 @@ void CudaDenseForwardCore(
 )
 {
 	MatrixMultCore(Inputs, &DenseLayer->Weights, Results, Start, Stride);
+	__syncthreads();
 	AddVectorToRowsCore(
 		Results, &DenseLayer->Bias, Results, Start, Stride
 	);
@@ -493,27 +494,33 @@ void CudaDenseBackCore(
 		Start,
 		Stride
 	);
+	__syncthreads();
 
 	// NOTE: Calculate the delta for the weights
 	matrix* WeightsDelta = &TrainData->WeightsDelta;
 	MatrixMultM1TransposeCore(
 		Inputs, NextLayerGradient, WeightsDelta, Start, Stride
 	);
+	__syncthreads();
 	MatrixScalarMultCore(
 		TrainData->LearningRate, WeightsDelta, WeightsDelta, Start, Stride
 	);
+	__syncthreads();
 	
 	// NOTE: update weights
 	MatrixAddCore(Weights, WeightsDelta, Weights, Start, Stride);
+	__syncthreads();
 
 	// NOTE: calculate bias delta
 	matrix* Bias = &DenseLayer->Bias;
 	matrix* BiasDelta = &TrainData->BiasDelta;
 	MatrixMeanCore(NextLayerGradient, BiasDelta, Start, Stride);
+	__syncthreads();
 	MatrixScalarMultCore(
 		TrainData->LearningRate, BiasDelta, BiasDelta, Start, Stride
 	);
-
+	__syncthreads();
+	
 	// NOTE: update bias
 	MatrixAddCore(Bias, BiasDelta, Bias, Start, Stride);
 }
