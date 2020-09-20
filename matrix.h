@@ -36,6 +36,9 @@ bool LoadMatrix(matrix* Matrix, char* FilePath);
 void WriteMatrix(matrix* Matrix, FILE* File);
 
 HOST_PREFIX DEVICE_PREFIX
+void PrintMatrix(matrix* Matrix);
+
+HOST_PREFIX DEVICE_PREFIX
 void MatrixMultCore(
 	matrix* M1, matrix* M2, matrix* Result, int Start, int Stride
 );

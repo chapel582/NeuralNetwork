@@ -64,6 +64,22 @@ void FillIdentityMatrix(matrix* Matrix)
 }
 
 HOST_PREFIX DEVICE_PREFIX
+void PrintMatrix(matrix* Matrix)
+{
+	printf("[\n");
+	for(uint32_t Row = 0; Row < Matrix->NumRows; Row++)
+	{
+		printf("[");
+		for(uint32_t Column = 0; Column < (Matrix->NumColumns - 1); Column++)
+		{
+			printf("%f, ", GetMatrixElement(Matrix, Row, Column));
+		}
+		printf("%f]\n", GetMatrixElement(Matrix, Row, Matrix->NumColumns - 1));
+	}
+	printf("]\n");
+}
+
+HOST_PREFIX DEVICE_PREFIX
 uint32_t GetMatrixArrayCount(matrix* Matrix)
 {
 	return Matrix->NumRows * Matrix->NumColumns;

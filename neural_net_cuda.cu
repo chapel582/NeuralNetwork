@@ -630,20 +630,35 @@ float CudaMseForwardCore(
 	matrix* Predictions,
 	matrix* Labels,
 	float* Results,
+	uint32_t ResultsCount,
 	uint32_t Start,
 	uint32_t Stride
 )
 {
-	Results[Start] = 0.0f;
-	Results[Start] = MseForwardCore(Predictions, Labels, Start, Stride);
+	float ThreadResult = 0.0f;
+	if(Start < ResultsCount)
+	{
+		ThreadResult = MseForwardCore(Predictions, Labels, Start, Stride);
+	}
 	__syncthreads();
+	
+	if(Start >= ResultsCount)
+	{
+		// NOTE: no guarantee we'll have <= threads than results entries
+		// NOTE: can't return earlier b/c of the syncthreads call
+		return 0.0f;
+	}
+	else
+	{
+		Results[Start] = ThreadResult;
+	}
 
 	// NOTE: single-threaded summation
 	// TODO: could try a divide-and conquer algorithm for fast summation
 	float Result = 0.0f;	
 	if(Start == 0)
 	{
-		for(int Index = 0; Index < Stride; Index++)
+		for(int Index = 0; Index < ResultsCount; Index++)
 		{
 			Result += Results[Index];
 		}
@@ -655,7 +670,10 @@ float CudaMseForwardCore(
 
 __global__
 void CudaMseForwardThread(
-	matrix* Predictions, matrix* Labels, float* GlobalResult
+	matrix* Predictions,
+	matrix* Labels,
+	float* GlobalResult,
+	uint32_t ResultsCount
 )
 {
 	extern __shared__ float Results[];
@@ -664,7 +682,7 @@ void CudaMseForwardThread(
 	uint32_t Stride = gridDim.x * blockDim.x;
 
 	float Result = CudaMseForwardCore(
-		Predictions, Labels, Results, Start, Stride
+		Predictions, Labels, Results, ResultsCount, Start, Stride
 	);
 	if(Start == 0)
 	{
@@ -681,9 +699,10 @@ float CudaMseForward(matrix* Predictions, matrix* Labels)
 	);
 	float* Mse;
 	cudaMallocManaged(&Mse, sizeof(float));
-	size_t MemorySize = sizeof(float) * NumBlocks * BlockSize;
+	uint32_t ResultsCount = NumBlocks * BlockSize;
+	size_t MemorySize = sizeof(float) * ResultsCount;
 	CudaMseForwardThread<<<NumBlocks, BlockSize, MemorySize>>>(
-		Predictions, Labels, Mse
+		Predictions, Labels, Mse, ResultsCount
 	);
 	cudaDeviceSynchronize();
 	float Result = *Mse;
@@ -992,6 +1011,7 @@ float CudaNeuralNetForwardCore(
 	matrix* Inputs,
 	matrix* Labels,
 	float* MseResults,
+	uint32_t MseResultsCount,
 	uint32_t ThreadIndex,
 	uint32_t ThreadCount
 )
@@ -1048,6 +1068,7 @@ float CudaNeuralNetForwardCore(
 						Inputs,
 						Labels,
 						MseResults,
+						MseResultsCount,
 						ThreadIndex,
 						ThreadCount
 					);
@@ -1073,19 +1094,20 @@ void CudaNeuralNetForwardThread(
 	neural_net* NeuralNet,
 	matrix* Inputs,
 	matrix* Labels,
-	float* LossResult
+	float* LossResult,
+	uint32_t MseResultsCount
 )
 {
 	extern __shared__ float MseResults[];
 
 	uint32_t ThreadIndex = blockIdx.x * blockDim.x + threadIdx.x;
 	uint32_t NumThreads = gridDim.x * blockDim.x;
-
 	float Loss = CudaNeuralNetForwardCore(
 		NeuralNet,
 		Inputs,
 		Labels,
 		MseResults,
+		MseResultsCount,
 		ThreadIndex,
 		NumThreads
 	);
@@ -1108,18 +1130,18 @@ cudaError_t CudaNeuralNetForward(
 	uint32_t BlockSize = GetBlockSize(Device);
 	uint32_t NumBlocks = GetMaxNumBlocks(Device);
 	
-	size_t MemorySize;
+	uint32_t MseResultsCount; 
 	if(Labels)
 	{
-		MemorySize = Labels->NumRows * sizeof(float);	
+		MseResultsCount = Labels->NumRows;	
 	}
 	else
 	{
-		MemorySize = 1;
+		MseResultsCount = 1;
 	}
-	
+	size_t MemorySize = MseResultsCount * sizeof(float);
 	CudaNeuralNetForwardThread<<<NumBlocks, BlockSize, MemorySize>>>(
-		NeuralNet, Inputs, Labels, LossResult
+		NeuralNet, Inputs, Labels, LossResult, MseResultsCount
 	);
 	cudaError_t Error = cudaDeviceSynchronize();
 
@@ -1518,13 +1540,12 @@ void CudaTrainNeuralNetMiniBatch(
 			);
 		}
 
-		float Loss = -1.0f;
-		CudaNeuralNetForward(
+		NeuralNetForward(
 			FullBatchNnViewer,
 			Inputs,
 			Labels,
 			NULL,
-			&Loss
+			Loss
 		);
 		float TrainingAccuracy = TopOneAccuracy(
 			FullBatchNnViewer, Inputs, Labels
@@ -1534,13 +1555,13 @@ void CudaTrainNeuralNetMiniBatch(
 			printf(
 				"Epoch %d Loss, Accuracy: %f, %f\n",
 				Epoch,
-				Loss,
+				*Loss,
 				TrainingAccuracy
 			);
 		}
 		if(
 			TrainingAccuracy >= TrainingAccuracyThreshold ||
-			Loss <= LossThreshold
+			*Loss <= LossThreshold
 		)
 		{
 			break;
