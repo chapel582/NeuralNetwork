@@ -405,12 +405,43 @@ void CudaDenseForwardCore(
 )
 {
 	MatrixMultCore(Inputs, &DenseLayer->Weights, Results, Start, Stride);
-	__syncthreads();
-
 	AddVectorToRowsCore(
 		Results, &DenseLayer->Bias, Results, Start, Stride
 	);
-	__syncthreads();
+}
+
+__global__
+void CudaDenseForwardActivateThread(
+	matrix* Inputs,
+	dense_layer* DenseLayer,
+	matrix* DenseOutput,
+	matrix* ActivationOutput
+)
+{
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Stride = blockDim.x * gridDim.x;
+
+	// TODO: more activation options
+	CudaDenseForwardCore(Inputs, DenseLayer, DenseOutput, Start, Stride);
+	ReluForwardCore(DenseOutput, ActivationOutput, Start, Stride);
+}
+
+void CudaDenseForwardActivate(
+	matrix* Inputs,
+	dense_layer* DenseLayer,
+	matrix* DenseOutput,
+	matrix* ActivationOutput
+)
+{
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(
+		GetMatrixArrayCount(ActivationOutput), BlockSize, Device
+	);
+	CudaDenseForwardActivateThread<<<NumBlocks, BlockSize>>>(
+		Inputs, DenseLayer, DenseOutput, ActivationOutput
+	);
+	cudaDeviceSynchronize();
 }
 
 __global__
@@ -517,7 +548,6 @@ void CudaDenseBackCore(
 
 	// NOTE: update bias
 	MatrixAddCore(Bias, BiasDelta, Bias, Start, Stride);
-	__syncthreads();
 }
 
 __global__
@@ -1005,11 +1035,24 @@ void CudaNeuralNetForward(
 		{
 			case(LayerType_Dense):
 			{
-				CudaDenseForward(
-					Inputs,
-					(dense_layer*) LayerLink->Data,
-					Outputs
-				);
+				dense_layer* DenseLayer = (dense_layer*) LayerLink->Data;
+				layer_link* Next = LayerLink->Next;
+				if(Next != NULL && Next->Type == LayerType_Relu)
+				{
+					// NOTE: dense + activation has no need for synchronization
+					// CONT: and saves us a loop to GPU
+					CudaDenseForwardActivate(
+						Inputs, DenseLayer, Outputs, Next->Output
+					);
+
+					Outputs = Next->Output;
+					LayerLink = Next;
+					LayerIndex++;
+				}
+				else
+				{
+					CudaDenseForward(Inputs, DenseLayer, Outputs);
+				}
 				break;
 			}
 			case(LayerType_Relu):
