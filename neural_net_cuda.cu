@@ -642,10 +642,15 @@ float CudaMseForwardCore(
 	uint32_t Stride
 )
 {
+	if(Stride > ResultsCount)
+	{
+		Stride = ResultsCount;
+	}
+	
 	float ThreadResult = 0.0f;
 	if(Start < ResultsCount)
 	{
-		ThreadResult = MseForwardCore(Predictions, Labels, Start, ResultsCount);
+		ThreadResult = MseForwardCore(Predictions, Labels, Start, Stride);
 	}
 	__syncthreads();
 	
@@ -1147,7 +1152,7 @@ cudaError_t CudaNeuralNetForward(
 		MseResultsCount = 1;
 	}
 	size_t MemorySize = MseResultsCount * sizeof(float);
-	CudaNeuralNetForwardThread<<<NumBlocks, BlockSize, MemorySize>>>(
+	CudaNeuralNetForwardThread<<<1, 32, MemorySize>>>(
 		NeuralNet, Inputs, Labels, LossResult, MseResultsCount
 	);
 	cudaError_t Error = cudaDeviceSynchronize();
