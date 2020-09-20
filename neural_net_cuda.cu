@@ -645,7 +645,7 @@ float CudaMseForwardCore(
 	float ThreadResult = 0.0f;
 	if(Start < ResultsCount)
 	{
-		ThreadResult = MseForwardCore(Predictions, Labels, Start, Stride);
+		ThreadResult = MseForwardCore(Predictions, Labels, Start, ResultsCount);
 	}
 	__syncthreads();
 	
