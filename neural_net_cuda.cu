@@ -669,7 +669,6 @@ void CudaMseForwardCore(
 {
 	Results[Start] = 0.0f;
 	Results[Start] = MseForwardCore(Predictions, Labels, Start, Stride);
-	__syncthreads();
 
 	// NOTE: single-threaded summation
 	// TODO: could try a divide-and conquer algorithm for fast summation
@@ -704,9 +703,9 @@ float CudaMseForward(matrix* Predictions, matrix* Labels)
 {
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
-	uint32_t NumBlocks = GetNumBlocks(
-		GetMatrixArrayCount(Predictions), BlockSize, Device
-	);
+	uint32_t NumBlocks = 1; 
+	// NOTE: Num blocks has to be one b/c we need to sync before summation
+
 	float* Mse;
 	cudaMallocManaged(&Mse, sizeof(float));
 	size_t MemorySize = sizeof(float) * NumBlocks * BlockSize;
@@ -731,7 +730,6 @@ void CudaMseBackCore(
 	MatrixSubtractCore(
 		Labels, Predictions, &TrainData->LayerGradient, Start, Stride
 	);
-	__syncthreads();
 	MatrixScalarMultCore(
 		1.0f / Predictions->NumColumns,
 		&TrainData->LayerGradient,
