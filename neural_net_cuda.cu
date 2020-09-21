@@ -1472,6 +1472,16 @@ void CudaTrainNeuralNetMiniBatch(
 	int_shuffler* IntShuffler;
 	CudaMakeIntShuffler(&IntShuffler, TrainingSamples);
 
+	uint32_t MiniBatchInitBlockSize;
+	if(MiniBatchSize > GetBlockSize(0))
+	{
+		MiniBatchInitBlockSize = GetBlockSize(0);
+	}
+	else
+	{
+		MiniBatchInitBlockSize = MiniBatchSize;
+	}
+
 	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
 	{
 		ShuffleInts(IntShuffler);
@@ -1482,7 +1492,7 @@ void CudaTrainNeuralNetMiniBatch(
 		)
 		{
 			// NOTE: create mini batch
-			CudaCreateMiniBatch<<<1, MiniBatchSize>>>(
+			CudaCreateMiniBatch<<<1, MiniBatchInitBlockSize>>>(
 				IntShuffler,
 				MiniBatchData,
 				MiniBatchLabels,
