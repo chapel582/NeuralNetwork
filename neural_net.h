@@ -1,6 +1,7 @@
 #ifndef NEURAL_NET_H
 
 #include "project_flags.h"
+#include "int_shuffler.h"
 #include "matrix.h"
 
 // TODO: Need to have a platform independent way of handling threads
@@ -126,12 +127,15 @@ float MseForwardCore(
 );
 HOST_PREFIX DEVICE_PREFIX
 void CreateMiniBatch(
+	int_shuffler* IntShuffler,
 	matrix* MiniBatchData,
-	matrix* MinibatchLabels,
+	matrix* MiniBatchLabels,
 	matrix* Inputs,
 	matrix* Labels,
 	uint32_t BatchIndex,
-	uint32_t MiniBatchSize
+	uint32_t MiniBatchSize,
+	uint32_t Start,
+	uint32_t Stride
 );
 
 #define NEURAL_NET_H
