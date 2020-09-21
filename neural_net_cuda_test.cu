@@ -1477,7 +1477,7 @@ int main(int argc, char* argv[])
 		uint32_t MiniBatchSize = 32;
 		uint32_t TrainingSamples = 2048;
 		uint32_t TestSamples = 100;
-		uint32_t Epochs = 100;
+		uint32_t Epochs = 30;
 		float TrainingAccuracyThreshold = 0.99f;
 		float LossThreshold = -0.00001f;
 		float LearningRate = 0.1f;

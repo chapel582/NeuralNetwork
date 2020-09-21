@@ -1,5 +1,6 @@
 // TODO: handle cudaMallocManaged failures
-// TODO: query max block size
+
+#include "performance.h"
 #include "arg_max.h"
 #include "int_shuffler.h"
 #include "neural_net.h"
@@ -724,13 +725,14 @@ void CudaMseBackCore(
 	uint32_t Stride
 )
 {
+	matrix* LayerGradient = &TrainData->LayerGradient;
 	MatrixSubtractCore(
-		Labels, Predictions, &TrainData->LayerGradient, Start, Stride
+		Labels, Predictions, LayerGradient, Start, Stride
 	);
 	MatrixScalarMultCore(
 		1.0f / Predictions->NumColumns,
-		&TrainData->LayerGradient,
-		&TrainData->LayerGradient,
+		LayerGradient,
+		LayerGradient,
 		Start,
 		Stride
 	);
@@ -1396,6 +1398,39 @@ void CudaTrainNeuralNet(
 	}
 }
 
+float CudaTopOneAccuracy(neural_net* NeuralNet, matrix* Inputs, matrix* Labels)
+{
+	matrix* Predictions = NULL;
+	CudaNeuralNetForward(
+		NeuralNet,
+		Inputs,
+		Labels,
+		&Predictions,
+		NULL
+	);
+	
+	uint32_t TotalCorrect = 0;
+	for(
+		uint32_t SampleIndex = 0;
+		SampleIndex < Predictions->NumRows;
+		SampleIndex++
+	)
+	{
+		uint32_t PredictedLabel = ArgMax(
+			GetMatrixRow(Predictions, SampleIndex), Predictions->NumColumns
+		);
+		uint32_t ActualLabel = ArgMax(
+			GetMatrixRow(Labels, SampleIndex), Predictions->NumColumns
+		);
+		if(PredictedLabel == ActualLabel)
+		{
+			TotalCorrect++;
+		}
+	}
+
+	return (float) TotalCorrect / (float) Predictions->NumRows;
+}
+
 void CudaMakeIntShuffler(int_shuffler** Result, uint32_t Range)
 {
 	cudaMallocManaged(Result, sizeof(int_shuffler));
@@ -1523,7 +1558,7 @@ void CudaTrainNeuralNetMiniBatch(
 			NULL,
 			&Loss
 		);
-		float TrainingAccuracy = TopOneAccuracy(
+		float TrainingAccuracy = CudaTopOneAccuracy(
 			FullBatchNnViewer, Inputs, Labels
 		);
 		if(PrintStatus)
