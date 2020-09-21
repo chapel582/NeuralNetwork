@@ -1,5 +1,6 @@
 #include "neural_net.h"
 #include "matrix.h"
+#include "int_shuffler.h"
 
 #include <stdint.h>
 
@@ -142,4 +143,49 @@ float MseForwardCore(
 	}
 
 	return Result;
+}
+
+HOST_PREFIX DEVICE_PREFIX
+void CreateMiniBatch(
+	int_shuffler* IntShuffler,
+	matrix* MiniBatchData,
+	matrix* MiniBatchLabels,
+	matrix* Inputs,
+	matrix* Labels,
+	uint32_t BatchIndex,
+	uint32_t MiniBatchSize,
+	uint32_t Start,
+	uint32_t Stride
+)
+{
+	// NOTE: create mini batch
+	uint32_t IndexHandleStart = BatchIndex * MiniBatchSize;
+	for(
+		uint32_t IndexHandle = IndexHandleStart + Start;
+		IndexHandle < (IndexHandleStart + MiniBatchSize);
+		IndexHandle += Stride
+	)
+	{
+		int RowToGet = IntShuffler->Result[IndexHandle];
+		float* DataRow = GetMatrixRow(Inputs, RowToGet);
+		float* LabelsRow = GetMatrixRow(Labels, RowToGet);
+
+		float* MiniBatchDataRow = GetMatrixRow(
+			MiniBatchData, IndexHandle - IndexHandleStart
+		);
+		float* MiniBatchLabelRow = GetMatrixRow(
+			MiniBatchLabels, IndexHandle - IndexHandleStart
+		);
+
+		memcpy(
+			MiniBatchDataRow,
+			DataRow,
+			MiniBatchData->NumColumns * sizeof(float)
+		);
+		memcpy(
+			MiniBatchLabelRow,
+			LabelsRow,
+			MiniBatchLabels->NumColumns * sizeof(float)
+		);
+	}
 }

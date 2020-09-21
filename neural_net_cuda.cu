@@ -126,10 +126,7 @@ uint32_t GetNumBlocks(uint32_t Range, uint32_t BlockSize, uint32_t Device)
 __global__
 void CudaMatrixMultThread(matrix* M1, matrix* M2, matrix* Result)
 {	
-	// NOTE: this basically indexes by the thread index, but b/c the thread 
-	// CONT: index is reset on every block, 
 	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
-	// NOTE: this basically calculates the # of threads
 	uint32_t Stride = blockDim.x * gridDim.x;
 
 	MatrixMultCore(M1, M2, Result, Start, Stride);
@@ -1399,6 +1396,52 @@ void CudaTrainNeuralNet(
 	}
 }
 
+void CudaMakeIntShuffler(int_shuffler** Result, uint32_t Range)
+{
+	cudaMallocManaged(Result, sizeof(int_shuffler));
+	int_shuffler* IntShuffler = *Result;
+
+	IntShuffler->Range = Range;
+	// IntShuffler.Cells = (linked_int*) malloc(sizeof(linked_int) * Range);
+	// IntShuffler.Result = (int*) malloc(sizeof(int) * Range);
+	cudaMallocManaged(&IntShuffler->Cells, sizeof(linked_int) * Range);
+	cudaMallocManaged(&IntShuffler->Result, sizeof(int) * Range);
+}
+
+void CudaFreeIntShuffler(int_shuffler* IntShuffler)
+{
+	cudaFree(IntShuffler->Cells);
+	cudaFree(IntShuffler->Result);
+	cudaFree(IntShuffler);
+}
+
+__global__
+void CudaCreateMiniBatch(
+	int_shuffler* IntShuffler,
+	matrix* MiniBatchData,
+	matrix* MiniBatchLabels,
+	matrix* Inputs,
+	matrix* Labels,
+	uint32_t BatchIndex,
+	uint32_t MiniBatchSize
+)
+{
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;  
+	uint32_t Stride = blockDim.x * gridDim.x;
+
+	CreateMiniBatch(
+		IntShuffler,
+		MiniBatchData,
+		MiniBatchLabels,
+		Inputs,
+		Labels,
+		BatchIndex,
+		MiniBatchSize,
+		Start,
+		Stride
+	);
+}
+
 void CudaTrainNeuralNetMiniBatch(
 	neural_net_trainer* Trainer,
 	neural_net* NeuralNet,
@@ -1426,11 +1469,12 @@ void CudaTrainNeuralNetMiniBatch(
 		InitDenseLayers(NeuralNet);
 	}
 
-	int_shuffler IntShuffler = MakeIntShuffler(TrainingSamples);
+	int_shuffler* IntShuffler;
+	CudaMakeIntShuffler(&IntShuffler, TrainingSamples);
 
 	for(uint32_t Epoch = 0; Epoch < Epochs; Epoch++)
 	{
-		ShuffleInts(&IntShuffler);
+		ShuffleInts(IntShuffler);
 		for(
 			uint32_t BatchIndex = 0;
 			BatchIndex < TrainingSamples / MiniBatchSize;
@@ -1438,35 +1482,16 @@ void CudaTrainNeuralNetMiniBatch(
 		)
 		{
 			// NOTE: create mini batch
-			uint32_t IndexHandleStart = BatchIndex * MiniBatchSize;
-			for(
-				uint32_t IndexHandle = IndexHandleStart;
-				IndexHandle < (IndexHandleStart + MiniBatchSize);
-				IndexHandle++
-			)
-			{
-				int RowToGet = IntShuffler.Result[IndexHandle];
-				float* DataRow = GetMatrixRow(Inputs, RowToGet);
-				float* LabelsRow = GetMatrixRow(Labels, RowToGet);
-
-				float* MiniBatchDataRow = GetMatrixRow(
-					MiniBatchData, IndexHandle - IndexHandleStart
-				);
-				float* MiniBatchLabelRow = GetMatrixRow(
-					MiniBatchLabels, IndexHandle - IndexHandleStart
-				);
-
-				memcpy(
-					MiniBatchDataRow,
-					DataRow,
-					MiniBatchData->NumColumns * sizeof(float)
-				);
-				memcpy(
-					MiniBatchLabelRow,
-					LabelsRow,
-					MiniBatchLabels->NumColumns * sizeof(float)
-				);
-			}
+			CudaCreateMiniBatch<<<1, MiniBatchSize>>>(
+				IntShuffler,
+				MiniBatchData,
+				MiniBatchLabels,
+				Inputs,
+				Labels,
+				BatchIndex,
+				MiniBatchSize
+			);
+			cudaDeviceSynchronize();
 
 			// NOTE: train on mini batch
 			CudaTrainNeuralNet(
@@ -1508,4 +1533,6 @@ void CudaTrainNeuralNetMiniBatch(
 			break;
 		}
 	}
+
+	CudaFreeIntShuffler(IntShuffler);
 }

@@ -124,6 +124,15 @@ HOST_PREFIX DEVICE_PREFIX
 float MseForwardCore(
 	matrix* Predictions, matrix* Labels, uint32_t Start, uint32_t Stride
 );
+HOST_PREFIX DEVICE_PREFIX
+void CreateMiniBatch(
+	matrix* MiniBatchData,
+	matrix* MinibatchLabels,
+	matrix* Inputs,
+	matrix* Labels,
+	uint32_t BatchIndex,
+	uint32_t MiniBatchSize
+);
 
 #define NEURAL_NET_H
 #endif

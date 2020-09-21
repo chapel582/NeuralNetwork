@@ -1610,36 +1610,17 @@ void TrainNeuralNetMiniBatch(
 			BatchIndex++
 		)
 		{
-			// NOTE: create mini batch
-			uint32_t IndexHandleStart = BatchIndex * MiniBatchSize;
-			for(
-				uint32_t IndexHandle = IndexHandleStart;
-				IndexHandle < (IndexHandleStart + MiniBatchSize);
-				IndexHandle++
-			)
-			{
-				int RowToGet = IntShuffler.Result[IndexHandle];
-				float* DataRow = GetMatrixRow(Inputs, RowToGet);
-				float* LabelsRow = GetMatrixRow(Labels, RowToGet);
-
-				float* MiniBatchDataRow = GetMatrixRow(
-					MiniBatchData, IndexHandle - IndexHandleStart
-				);
-				float* MiniBatchLabelRow = GetMatrixRow(
-					MiniBatchLabels, IndexHandle - IndexHandleStart
-				);
-
-				memcpy(
-					MiniBatchDataRow,
-					DataRow,
-					MiniBatchData->NumColumns * sizeof(float)
-				);
-				memcpy(
-					MiniBatchLabelRow,
-					LabelsRow,
-					MiniBatchLabels->NumColumns * sizeof(float)
-				);
-			}
+			CreateMiniBatch(
+				&IntShuffler,
+				MiniBatchData,
+				MiniBatchLabels,
+				Inputs,
+				Labels,
+				BatchIndex,
+				MiniBatchSize,
+				0,
+				1
+			);
 
 			// NOTE: train on mini batch
 			TrainNeuralNet(
@@ -1681,6 +1662,8 @@ void TrainNeuralNetMiniBatch(
 			break;
 		}
 	}
+
+	// TODO: free int shuffler
 }
 
 #pragma pack(push, 1)
