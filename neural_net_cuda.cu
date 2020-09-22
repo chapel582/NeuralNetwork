@@ -133,7 +133,7 @@ void CudaMatrixMultThread(matrix* M1, matrix* M2, matrix* Result)
 	MatrixMultCore(M1, M2, Result, Start, Stride);
 }
 
-void CudaMatrixMult(matrix* M1, matrix* M2, matrix* Result)
+cudaError_t CudaMatrixMult(matrix* M1, matrix* M2, matrix* Result)
 {
 	assert(M1->NumColumns == M2->NumRows);
 	uint32_t Device = 0;
@@ -142,7 +142,9 @@ void CudaMatrixMult(matrix* M1, matrix* M2, matrix* Result)
 		GetMatrixArrayCount(Result), BlockSize, Device
 	);
 	CudaMatrixMultThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 __global__
@@ -165,7 +167,7 @@ void CudaAddVectorToRowsThread(matrix* M1, matrix* Vector, matrix* Result)
 	AddVectorToRowsCore(M1, Vector, Result, Start, Stride);
 }
 
-void CudaAddVectorToRows(matrix* M1, matrix* Vector, matrix* Result)
+cudaError_t CudaAddVectorToRows(matrix* M1, matrix* Vector, matrix* Result)
 {
 	// NOTE: this function is equivalent to adding two matrices, M1 and M2,
 	// CONT: where M2 has the same values in each row (Vector) 
@@ -184,7 +186,9 @@ void CudaAddVectorToRows(matrix* M1, matrix* Vector, matrix* Result)
 		GetMatrixArrayCount(M1), BlockSize, Device
 	);
 	CudaAddVectorToRowsThread<<<NumBlocks, BlockSize>>>(M1, Vector, Result);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 __global__
@@ -199,7 +203,7 @@ void CudaMatrixAddThread(matrix* M1, matrix* M2, matrix* Result)
 	MatrixAddCore(M1, M2, Result, Start, Stride);
 }
 
-void CudaMatrixAdd(matrix* M1, matrix* M2, matrix* Result)
+cudaError_t CudaMatrixAdd(matrix* M1, matrix* M2, matrix* Result)
 {
 	assert(M1->NumRows == M2->NumRows);
 	assert(M1->NumColumns == M2->NumColumns);
@@ -212,7 +216,9 @@ void CudaMatrixAdd(matrix* M1, matrix* M2, matrix* Result)
 		GetMatrixArrayCount(M1), BlockSize, Device
 	);
 	CudaMatrixAddThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 __global__
@@ -224,7 +230,7 @@ void CudaMatrixMultM1TransposeThread(matrix* M1, matrix* M2, matrix* Result)
 	MatrixMultM1TransposeCore(M1, M2, Result, Start, Stride);
 }
 
-void CudaMatrixMultM1Transpose(matrix* M1, matrix* M2, matrix* Result)
+cudaError_t CudaMatrixMultM1Transpose(matrix* M1, matrix* M2, matrix* Result)
 {
 	// NOTE: For transpose multiplication without allocating and initializing
 	// CONT: a new matrix
@@ -238,7 +244,9 @@ void CudaMatrixMultM1Transpose(matrix* M1, matrix* M2, matrix* Result)
 		GetMatrixArrayCount(Result), BlockSize, Device
 	);
 	CudaMatrixMultM1TransposeThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 __global__
@@ -253,7 +261,7 @@ void CudaMatrixMultM2TransposeThread(matrix* M1, matrix* M2, matrix* Result)
 	MatrixMultM2TransposeCore(M1, M2, Result, Start, Stride);
 }
 
-void CudaMatrixMultM2Transpose(matrix* M1, matrix* M2, matrix* Result)
+cudaError_t CudaMatrixMultM2Transpose(matrix* M1, matrix* M2, matrix* Result)
 {
 	// NOTE: For transpose multiplication without allocating and initializing
 	// CONT: a new matrix
@@ -267,7 +275,9 @@ void CudaMatrixMultM2Transpose(matrix* M1, matrix* M2, matrix* Result)
 		GetMatrixArrayCount(Result), BlockSize, Device
 	);
 	CudaMatrixMultM2TransposeThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 __global__
@@ -282,7 +292,7 @@ void CudaMatrixMultM1M2TransposeThread(matrix* M1, matrix* M2, matrix* Result)
 	MatrixMultM1M2TransposeCore(M1, M2, Result, Start, Stride);
 }
 
-void CudaMatrixMultM1M2Transpose(matrix* M1, matrix* M2, matrix* Result)
+cudaError_t CudaMatrixMultM1M2Transpose(matrix* M1, matrix* M2, matrix* Result)
 {
 	// NOTE: For transpose multiplication without allocating and initializing
 	// CONT: a new matrix
@@ -294,7 +304,9 @@ void CudaMatrixMultM1M2Transpose(matrix* M1, matrix* M2, matrix* Result)
 		GetMatrixArrayCount(Result), BlockSize, Device
 	);
 	CudaMatrixMultM1M2TransposeThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 __global__
@@ -309,7 +321,7 @@ void CudaMatrixScalarMultThread(float Scalar, matrix* M1, matrix* Result)
 	MatrixScalarMultCore(Scalar, M1, Result, Start, Stride);
 }
 
-void CudaMatrixScalarMult(float Scalar, matrix* M1, matrix* Result)
+cudaError_t CudaMatrixScalarMult(float Scalar, matrix* M1, matrix* Result)
 {
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
@@ -317,7 +329,9 @@ void CudaMatrixScalarMult(float Scalar, matrix* M1, matrix* Result)
 		GetMatrixArrayCount(M1), BlockSize, Device
 	);
 	CudaMatrixScalarMultThread<<<NumBlocks, BlockSize>>>(Scalar, M1, Result);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 __global__
@@ -332,7 +346,7 @@ void CudaMatrixSubtractThread(matrix* M1, matrix* M2, matrix* Result)
 	MatrixSubtractCore(M1, M2, Result, Start, Stride);
 }
 
-void CudaMatrixSubtract(matrix* M1, matrix* M2, matrix* Result)
+cudaError_t CudaMatrixSubtract(matrix* M1, matrix* M2, matrix* Result)
 {
 	assert(M1->NumRows == M2->NumRows);
 	assert(M1->NumColumns == M2->NumColumns);
@@ -344,7 +358,9 @@ void CudaMatrixSubtract(matrix* M1, matrix* M2, matrix* Result)
 	);
 
 	CudaMatrixSubtractThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 __global__
@@ -359,7 +375,7 @@ void CudaMatrixMeanThread(matrix* M1, matrix* Result)
 	MatrixMeanCore(M1, Result, Start, Stride);
 }
 
-void CudaMatrixMean(matrix* M1, matrix* Result)
+cudaError_t CudaMatrixMean(matrix* M1, matrix* Result)
 {
 	/*NOTE:
 	This function finds the sum of all the row vectors of matrix M1 and divides
@@ -372,7 +388,9 @@ void CudaMatrixMean(matrix* M1, matrix* Result)
 	uint32_t BlockSize = GetBlockSize(Device);
 	uint32_t NumBlocks = GetNumBlocks(M1->NumColumns, BlockSize, Device);
 	CudaMatrixMeanThread<<<NumBlocks, BlockSize>>>(M1, Result);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 void CudaAllocDenseLayer(
@@ -424,7 +442,7 @@ void CudaDenseForwardActivateThread(
 	ReluForwardCore(DenseOutput, ActivationOutput, Start, Stride);
 }
 
-void CudaDenseForwardActivate(
+cudaError_t CudaDenseForwardActivate(
 	matrix* Inputs,
 	dense_layer* DenseLayer,
 	matrix* DenseOutput,
@@ -439,7 +457,9 @@ void CudaDenseForwardActivate(
 	CudaDenseForwardActivateThread<<<NumBlocks, BlockSize>>>(
 		Inputs, DenseLayer, DenseOutput, ActivationOutput
 	);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 __global__
@@ -453,7 +473,9 @@ void CudaDenseForwardThread(
 	CudaDenseForwardCore(Inputs, DenseLayer, Results, Start, Stride);
 }
 
-void CudaDenseForward(matrix* Inputs, dense_layer* DenseLayer, matrix* Results)
+cudaError_t CudaDenseForward(
+	matrix* Inputs, dense_layer* DenseLayer, matrix* Results
+)
 {
 	int Device = 0;
 	uint32_t BlockSize = GetBlockSize(Device);
@@ -463,7 +485,9 @@ void CudaDenseForward(matrix* Inputs, dense_layer* DenseLayer, matrix* Results)
 	CudaDenseForwardThread<<<NumBlocks, BlockSize>>>(
 		Inputs, DenseLayer, Results
 	);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 void CudaAllocDenseLayerTrain(
@@ -564,7 +588,7 @@ void CudaDenseBackThread(
 	);
 }
 
-void CudaDenseBack(
+cudaError_t CudaDenseBack(
 	matrix* Inputs,
 	matrix* NextLayerGradient,
 	dense_layer* DenseLayer,
@@ -582,7 +606,9 @@ void CudaDenseBack(
 		DenseLayer,
 		TrainData
 	);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 void CudaAllocReluTrain(
@@ -610,7 +636,7 @@ void CudaReluForwardThread(matrix* Inputs, matrix* Outputs)
 	ReluForwardCore(Inputs, Outputs, Start, Stride);
 }
 
-void CudaReluForward(matrix* Inputs, matrix* Outputs)
+cudaError_t CudaReluForward(matrix* Inputs, matrix* Outputs)
 {
 	assert(Inputs->NumRows == Outputs->NumRows);
 	assert(Inputs->NumColumns == Outputs->NumColumns);
@@ -621,7 +647,9 @@ void CudaReluForward(matrix* Inputs, matrix* Outputs)
 		GetMatrixArrayCount(Inputs), BlockSize, Device
 	);
 	CudaReluForwardThread<<<NumBlocks, BlockSize>>>(Inputs, Outputs);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 __global__
@@ -640,7 +668,7 @@ void CudaReluBackThread(
 	);
 }
 
-void CudaReluBack(
+cudaError_t CudaReluBack(
 	matrix* Inputs, matrix* NextLayerGradient, relu_train_data* TrainData
 )
 {
@@ -652,7 +680,9 @@ void CudaReluBack(
 	CudaReluBackThread<<<NumBlocks, BlockSize>>>(
 		Inputs, NextLayerGradient, &TrainData->LayerGradient
 	);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 __device__
@@ -710,7 +740,10 @@ float CudaMseForward(matrix* Predictions, matrix* Labels)
 	CudaMseForwardThread<<<NumBlocks, BlockSize, MemorySize>>>(
 		Predictions, Labels, Mse
 	);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	// TODO: return error for handling in production code
+
 	float Result = *Mse;
 	cudaFree(Mse);
 	return Result;
@@ -751,7 +784,7 @@ void CudaMseBackThread(
 	CudaMseBackCore(Predictions, Labels, TrainData, Start, Stride);
 }
 
-void CudaMseBack(
+cudaError_t CudaMseBack(
 	matrix* Predictions,
 	matrix* Labels,
 	mse_train_data* TrainData
@@ -765,7 +798,9 @@ void CudaMseBack(
 	CudaMseBackThread<<<NumBlocks, BlockSize>>>(
 		Predictions, Labels, TrainData
 	);
-	cudaDeviceSynchronize();
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
 }
 
 void CudaAllocNeuralNet(
@@ -1536,7 +1571,8 @@ void CudaTrainNeuralNetMiniBatch(
 				BatchIndex,
 				MiniBatchSize
 			);
-			cudaDeviceSynchronize();
+			cudaError_t Error = cudaDeviceSynchronize();
+			assert(Error == cudaSuccess);
 
 			// NOTE: train on mini batch
 			CudaTrainNeuralNet(
