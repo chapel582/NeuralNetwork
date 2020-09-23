@@ -99,6 +99,10 @@ void ReluBackCore(
 	uint32_t Stride
 )
 {
+	assert(
+		GetMatrixArrayCount(LayerGradient) == 
+		GetMatrixArrayCount(NextLayerGradient)
+	);
 	uint32_t NumResultElements = GetMatrixArrayCount(LayerGradient);
 	for(
 		uint32_t ResultIndex = Start;
