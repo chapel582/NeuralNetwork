@@ -624,7 +624,7 @@ void CudaAllocReluTrain(
 void CudaFreeReluTrain(relu_train_data* TrainData)
 {
 	CudaFreeMatrixData(&TrainData->LayerGradient);
-	free(TrainData);
+	cudaFree(TrainData);
 }
 
 __global__

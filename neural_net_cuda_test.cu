@@ -1619,11 +1619,11 @@ int main(int argc, char* argv[])
 
 			// SECTION START: test freeing neural nets
 			// TODO: add a check for available memory before and after
-			// CudaFreeNeuralNetTrainer(Trainer);
-			// CudaFreeNeuralNet(NeuralNet);
+			CudaFreeNeuralNetTrainer(Trainer);
+			CudaFreeNeuralNet(NeuralNet);
 			// CudaFreeNeuralNet(LoadedNeuralNet);
-			// CudaFreeResizedNeuralNet(FullBatchNnViewer);
-			// CudaFreeResizedNeuralNet(TestNnViewer);
+			CudaFreeResizedNeuralNet(FullBatchNnViewer);
+			CudaFreeResizedNeuralNet(TestNnViewer);
 			// SECTION STOP: test freeing neural nets
 		}
 		else
