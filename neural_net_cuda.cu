@@ -1617,3 +1617,88 @@ void CudaTrainNeuralNetMiniBatch(
 
 	CudaFreeIntShuffler(IntShuffler);
 }
+
+void CudaLoadNeuralNet(
+	neural_net** Result, char* FilePath, uint32_t BatchSize, uint32_t NumThreads
+)
+{
+	FILE* File;
+	fopen_s(&File, FilePath, "rb");
+	
+	model_header ModelHeader = {};
+	fread(&ModelHeader, 1, sizeof(model_header), File);
+
+	CudaAllocNeuralNet(
+		Result,
+		BatchSize,
+		ModelHeader.InputDim,
+		NumThreads
+	);
+	neural_net* NeuralNet = *Result;
+
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < ModelHeader.NumLayers;
+		LayerIndex++
+	)
+	{
+		layer_header LayerHeader = {};
+		fread(&LayerHeader, 1, sizeof(layer_header), File);
+
+		switch(LayerHeader.Type)
+		{
+			case(LayerType_Dense):
+			{
+				matrix WeightsInfo;
+				fread(&WeightsInfo, 1, sizeof(matrix), File);
+				matrix BiasInfo;
+				fread(&BiasInfo, 1, sizeof(matrix), File);
+
+				CudaAddDense(NeuralNet, WeightsInfo.NumColumns);
+
+				dense_layer* DenseLayer = (dense_layer*)(
+					NeuralNet->LastLink->Data
+				);
+				fread(
+					DenseLayer->Weights.Data,
+					1,
+					GetMatrixDataSize(&DenseLayer->Weights),
+					File
+				);
+				fread(
+					DenseLayer->Bias.Data,
+					1,
+					GetMatrixDataSize(&DenseLayer->Bias),
+					File
+				);
+				break;
+			}
+			case(LayerType_Relu):
+			{
+				CudaAddRelu(NeuralNet);
+				break;
+			}
+			case(LayerType_Softmax):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_CrossEntropy):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_Mse):
+			{
+				CudaAddMeanSquared(NeuralNet);
+				break;
+			}
+			default:
+			{				
+				break;
+			}
+		}
+	}
+
+	fclose(File);
+}

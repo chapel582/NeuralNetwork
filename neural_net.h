@@ -4,7 +4,7 @@
 #include "int_shuffler.h"
 #include "matrix.h"
 
-// TODO: Need to have a platform independent way of handling threads
+// TODO: Need to have a platform independent way of handling threads and file io
 #include <windows.h>
 
 struct dense_layer
@@ -96,6 +96,19 @@ struct neural_net_trainer
 	matrix* MiniBatchLabels;
 };
 
+#pragma pack(push, 1)
+struct model_header
+{
+	uint32_t NumLayers;
+	uint32_t InputDim;
+};
+
+struct layer_header
+{
+	layer_type Type;
+};
+#pragma pack(pop)
+
 void InitDenseLayers(neural_net* NeuralNet);
 void AllocMatrixOpJobs(matrix_op_jobs** Result, uint32_t NumThreads);
 float MseForward(
@@ -137,6 +150,7 @@ void CreateMiniBatch(
 	uint32_t Start,
 	uint32_t Stride
 );
+void SaveNeuralNet(neural_net* NeuralNet, char* FilePath);
 
 #define NEURAL_NET_H
 #endif

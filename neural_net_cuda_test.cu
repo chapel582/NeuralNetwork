@@ -1581,39 +1581,39 @@ int main(int argc, char* argv[])
 				printf("MNIST training test failed\n");
 			}
 
-			// // SECTION START: test model saving and loading
-			// snprintf(
-			// 	FilePathBuffer,
-			// 	sizeof(FilePathBuffer),
-			// 	"%s/%s",
-			// 	TestDataDirectory,
-			// 	"models"
-			// );
-			// if(!PathFileExistsA(FilePathBuffer))
-			// {
-			// 	CreateDirectoryA(
-			// 		FilePathBuffer,
-			// 		NULL
-			// 	);
-			// }
-			// snprintf(
-			// 	FilePathBuffer,
-			// 	sizeof(FilePathBuffer),
-			// 	"%s/models/mnist_%dsamples.model",
-			// 	TestDataDirectory,
-			// 	TrainingSamples
-			// );
-			// SaveNeuralNet(NeuralNet, FilePathBuffer);
+			// SECTION START: test model saving and loading
+			snprintf(
+				FilePathBuffer,
+				sizeof(FilePathBuffer),
+				"%s/%s",
+				TestDataDirectory,
+				"models"
+			);
+			if(!PathFileExistsA(FilePathBuffer))
+			{
+				CreateDirectoryA(
+					FilePathBuffer,
+					NULL
+				);
+			}
+			snprintf(
+				FilePathBuffer,
+				sizeof(FilePathBuffer),
+				"%s/models/mnist_cuda_%dsamples.model",
+				TestDataDirectory,
+				TrainingSamples
+			);
+			SaveNeuralNet(NeuralNet, FilePathBuffer);
 
-			// neural_net* LoadedNeuralNet;
-			// LoadNeuralNet(
-			// 	&LoadedNeuralNet, FilePathBuffer, TestSamples, 4
-			// );
+			neural_net* LoadedNeuralNet;
+			LoadNeuralNet(
+				&LoadedNeuralNet, FilePathBuffer, TestSamples, 4
+			);
 
-			// float LoadedNnTestAccuracy = TopOneAccuracy(
-			// 	LoadedNeuralNet, TestData, TestLabels
-			// );
-			// printf("Loaded NN TestAccuracy = %f\n", LoadedNnTestAccuracy);
+			float LoadedNnTestAccuracy = TopOneAccuracy(
+				LoadedNeuralNet, TestData, TestLabels
+			);
+			printf("Loaded NN TestAccuracy = %f\n", LoadedNnTestAccuracy);
 
 			// SECTION STOP: test model saving and loading
 
@@ -1621,7 +1621,7 @@ int main(int argc, char* argv[])
 			// TODO: add a check for available memory before and after
 			CudaFreeNeuralNetTrainer(Trainer);
 			CudaFreeNeuralNet(NeuralNet);
-			// CudaFreeNeuralNet(LoadedNeuralNet);
+			CudaFreeNeuralNet(LoadedNeuralNet);
 			CudaFreeResizedNeuralNet(FullBatchNnViewer);
 			CudaFreeResizedNeuralNet(TestNnViewer);
 			// SECTION STOP: test freeing neural nets

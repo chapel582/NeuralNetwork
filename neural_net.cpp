@@ -193,3 +193,69 @@ void CreateMiniBatch(
 		);
 	}
 }
+
+void SaveNeuralNet(neural_net* NeuralNet, char* FilePath)
+{
+	FILE* File;
+	fopen_s(&File, FilePath, "wb");
+	
+	model_header ModelHeader = {};
+	ModelHeader.NumLayers = NeuralNet->NumLayers;
+	ModelHeader.InputDim = NeuralNet->InputDim;
+	fwrite(&ModelHeader, 1, sizeof(model_header), File);
+
+	layer_link* LayerLink = NeuralNet->FirstLink;
+	for(
+		uint32_t LayerIndex = 0;
+		LayerIndex < NeuralNet->NumLayers;
+		LayerIndex++
+	)
+	{
+		layer_header LayerHeader = {};
+		LayerHeader.Type = LayerLink->Type;
+
+		switch(LayerLink->Type)
+		{
+			case(LayerType_Dense):
+			{
+				dense_layer* DenseLayer = (dense_layer*) LayerLink->Data;
+
+				fwrite(&LayerHeader, 1, sizeof(layer_header), File);
+
+				fwrite(&DenseLayer->Weights, 1, sizeof(matrix), File);
+				fwrite(&DenseLayer->Bias, 1, sizeof(matrix), File);
+
+				WriteMatrix(&DenseLayer->Weights, File);
+				WriteMatrix(&DenseLayer->Bias, File);
+				break;
+			}
+			case(LayerType_Relu):
+			{
+				fwrite(&LayerHeader, 1, sizeof(layer_header), File);
+				break;
+			}
+			case(LayerType_Softmax):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_CrossEntropy):
+			{
+				// TODO: NOT IMPLEMENTED
+				break;
+			}
+			case(LayerType_Mse):
+			{
+				fwrite(&LayerHeader, 1, sizeof(layer_header), File);
+				break;
+			}
+			default:
+			{				
+				break;
+			}
+		}
+		LayerLink = LayerLink->Next;
+	}
+
+	fclose(File);
+}
