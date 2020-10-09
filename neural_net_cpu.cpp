@@ -645,6 +645,8 @@ DWORD WINAPI SoftmaxForwardThread(void* VoidArgs)
 			Sum += Value;
 		}
 
+		assert(Sum != 0);
+
 		for(uint32_t Col = 0; Col < Inputs->NumColumns; Col++)
 		{
 			SetMatrixElement(
@@ -1081,12 +1083,12 @@ void ResizedNeuralNet(
 			}
 			case(LayerType_Softmax):
 			{
-				// TODO: NOT IMPLEMENTED
+				AddSoftmax(NeuralNet);
 				break;
 			}
 			case(LayerType_CrossEntropy):
 			{
-				// TODO: NOT IMPLEMENTED
+				AddCrossEntropy(NeuralNet);
 				break;
 			}
 			case(LayerType_Mse):
@@ -1729,11 +1731,13 @@ void LoadNeuralNet(
 			case(LayerType_Softmax):
 			{
 				// TODO: NOT IMPLEMENTED
+				assert(false);
 				break;
 			}
 			case(LayerType_CrossEntropy):
 			{
 				// TODO: NOT IMPLEMENTED
+				assert(false);
 				break;
 			}
 			case(LayerType_Mse):

@@ -5,7 +5,7 @@ REM TODO - can we just build both with one exe?
 call .\setup.bat
 
 set BuildFolder=.\build
-set CommonCompilerFlags=-EHa- -Oi -Od -W4 -FC -Z7 -w44062
+set CommonCompilerFlags=-EHa- -Oi -Od -W4 -FC -Z7 -w44062 -fp:except
 set CommonLinkerFlags=-opt:ref
 
 IF NOT EXIST %BuildFolder% mkdir %BuildFolder%
