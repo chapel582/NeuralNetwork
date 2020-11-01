@@ -772,7 +772,7 @@ void AllocCrossEntropySoftmaxTrain(
 	*Result = TrainData;
 }
 
-void CrossEntropySoftmaxBack(
+void SoftmaxCrossEntropyBack(
 	matrix_op_jobs* MatrixOpJobs,
 	matrix* Predictions, 
 	matrix* Labels, 
@@ -783,7 +783,13 @@ void CrossEntropySoftmaxBack(
 	// NOTE: Labels has dim k x m where k is the batch size and m is the # of 
 	// CONT: classes
 	MatrixSubtract(
-		MatrixOpJobs, Predictions, Labels, &TrainData->LayerGradient
+		MatrixOpJobs, Labels, Predictions, &TrainData->LayerGradient
+	);
+	MatrixScalarMult(
+		MatrixOpJobs,
+		1.0f / Predictions->NumColumns,
+		&TrainData->LayerGradient,
+		&TrainData->LayerGradient
 	);
 }
 
@@ -987,6 +993,17 @@ void AddCrossEntropy(neural_net* NeuralNet)
 	AddLayerLink(NeuralNet, LayerType_CrossEntropy);
 }
 
+void AddSoftmaxCrossEntropy(neural_net* NeuralNet)
+{
+	uint32_t InputDim = AddLayerLink(NeuralNet, LayerType_SoftmaxCrossEntropy);
+	layer_link* LayerLink = NeuralNet->LastLink;
+
+	AllocSoftmaxLayer(
+		(softmax_layer**) &LayerLink->Data, NeuralNet->BatchSize, InputDim
+	);
+	AllocMatrix(&LayerLink->Output, NeuralNet->BatchSize, InputDim);
+}
+
 void AddMeanSquared(neural_net* NeuralNet)
 {
 	AddLayerLink(NeuralNet, LayerType_Mse);
@@ -1015,12 +1032,20 @@ void FreeNeuralNet(neural_net* NeuralNet)
 			}
 			case(LayerType_Softmax):
 			{
-				// TODO: NOT IMPLEMENTED
+				// TODO: not implemented
+				assert(false);
 				break;
 			}
 			case(LayerType_CrossEntropy):
 			{
-				// TODO: NOT IMPLEMENTED
+				// TODO: not implemented
+				assert(false);
+				break;
+			}
+			case(LayerType_SoftmaxCrossEntropy):
+			{
+				// TODO: not implemented
+				assert(false);
 				break;
 			}
 			case(LayerType_Mse):
@@ -1089,6 +1114,11 @@ void ResizedNeuralNet(
 			case(LayerType_CrossEntropy):
 			{
 				AddCrossEntropy(NeuralNet);
+				break;
+			}
+			case(LayerType_SoftmaxCrossEntropy):
+			{
+				AddSoftmaxCrossEntropy(NeuralNet);
 				break;
 			}
 			case(LayerType_Mse):
@@ -1176,14 +1206,36 @@ void NeuralNetForward(
 			// CONT: will be updated to NULL
 			case(LayerType_CrossEntropy):
 			{
+				// if(Predictions)
+				// {
+				// 	*Predictions = Inputs;
+				// }
+
+				// if(Labels != NULL)
+				// {
+				// 	Loss = CrossEntropyForward(MatrixOpJobs, Inputs, Labels);
+				// }
+				// TODO: implement
+				assert(false);
+				break;
+			}
+			case(LayerType_SoftmaxCrossEntropy):
+			{
+				SoftmaxForward(
+					MatrixOpJobs,
+					(softmax_layer*) LayerLink->Data,
+					Inputs,
+					Outputs
+				);
+
 				if(Predictions)
 				{
-					*Predictions = Inputs;
+					*Predictions = Outputs;
 				}
 
 				if(Labels != NULL)
 				{
-					Loss = CrossEntropyForward(MatrixOpJobs, Inputs, Labels);
+					Loss = CrossEntropyForward(MatrixOpJobs, Outputs, Labels);
 				}
 				break;
 			}
@@ -1256,6 +1308,11 @@ void AllocNeuralNetTrainer(
 			AddCrossEntropy(NeuralNet);
 			break;
 		}
+		case(LayerType_SoftmaxCrossEntropy):
+		{
+			AddSoftmaxCrossEntropy(NeuralNet);
+			break;
+		}
 		default:
 		{
 			break;
@@ -1305,13 +1362,21 @@ void AllocNeuralNetTrainer(
 			}
 			case(LayerType_Softmax):
 			{
+				// TODO: not implemented
+				assert(false);
 				break;
 			}
 			case(LayerType_CrossEntropy):
 			{
-				layer_link* PreviousLayer = LayerLink->Previous;
+				// TODO: not implemented
+				assert(false);
+				break;
+			}
+			case(LayerType_SoftmaxCrossEntropy):
+			{
+				// layer_link* PreviousLayer = LayerLink->Previous;
 				softmax_layer* SoftmaxLayer = (softmax_layer*)(
-					PreviousLayer->Data
+					LayerLink->Data
 				);
 
 				AllocCrossEntropySoftmaxTrain(
@@ -1501,6 +1566,29 @@ void TrainNeuralNet(
 				}
 				case(LayerType_Softmax):
 				{
+					// TODO: not implemented
+					assert(false);
+					break;
+				}
+				case(LayerType_CrossEntropy):
+				{
+					// TODO: not implemented
+					assert(false);
+					break;
+				}
+				case(LayerType_SoftmaxCrossEntropy):
+				{
+					cross_entropy_softmax_train_data* XEntropyTrain = (
+						(cross_entropy_softmax_train_data*) TrainData
+					);
+
+					SoftmaxCrossEntropyBack(
+						MatrixOpJobs,
+						Predictions, 
+						Labels,
+						XEntropyTrain
+					);
+					NextLayerGradient = &XEntropyTrain->LayerGradient;
 					break;
 				}
 				case(LayerType_Mse):
@@ -1514,21 +1602,6 @@ void TrainNeuralNet(
 						MseTrain
 					);
 					NextLayerGradient = &MseTrain->LayerGradient;
-					break;
-				}
-				case(LayerType_CrossEntropy):
-				{
-					cross_entropy_softmax_train_data* XEntropyTrain = (
-						(cross_entropy_softmax_train_data*) TrainData
-					);
-
-					CrossEntropySoftmaxBack(
-						MatrixOpJobs,
-						Predictions, 
-						Labels,
-						XEntropyTrain
-					);
-					NextLayerGradient = &XEntropyTrain->LayerGradient;
 					break;
 				}
 				default:
