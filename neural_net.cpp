@@ -127,6 +127,53 @@ void ReluBackCore(
 }
 
 HOST_PREFIX DEVICE_PREFIX
+void SoftmaxForwardCore(
+	matrix* Inputs,
+	matrix* Intermediate,
+	matrix* Result,
+	uint32_t Start,
+	uint32_t Stride
+)
+{
+	for(uint32_t Row = Start; Row < Inputs->NumRows; Row += Stride)
+	{
+		// NOTE: find max for row in order to maintain numerical stability with
+		// CONT: 32-bit float
+		float RowMax = GetMatrixElement(Inputs, Row, 0);
+		for(uint32_t Col = 1; Col < Inputs->NumColumns; Col++)
+		{
+			float Value = GetMatrixElement(Inputs, Row, Col);
+			if(Value > RowMax)
+			{
+				RowMax = Value;
+			}
+		}
+
+		float Sum = 0;
+		for(uint32_t Col = 0; Col < Inputs->NumColumns; Col++)
+		{
+			float Value = (float) exp(
+				GetMatrixElement(Inputs, Row, Col) - RowMax
+			);
+			SetMatrixElement(Intermediate, Row, Col, Value);
+			Sum += Value;
+		}
+
+		assert(Sum != 0);
+
+		for(uint32_t Col = 0; Col < Inputs->NumColumns; Col++)
+		{
+			SetMatrixElement(
+				Result,
+				Row,
+				Col,
+				GetMatrixElement(Intermediate, Row, Col) / Sum
+			);
+		}
+	}
+}
+
+HOST_PREFIX DEVICE_PREFIX
 float MseForwardCore(
 	matrix* Predictions, matrix* Labels, uint32_t Start, uint32_t Stride
 )
@@ -147,6 +194,25 @@ float MseForwardCore(
 	}
 
 	return Result;
+}
+
+HOST_PREFIX DEVICE_PREFIX
+float XentropyForwardCore(
+	matrix* Predictions, matrix* Labels, uint32_t Start, uint32_t Stride
+)
+{
+	float Result = 0.0f;
+	for(uint32_t Row = Start; Row < Predictions->NumRows; Row += Stride)
+	{
+		for(uint32_t Col = 0; Col < Predictions->NumColumns; Col++)
+		{
+			Result += (float) (
+				GetMatrixElement(Labels, Row, Col) * 
+				log(GetMatrixElement(Predictions, Row, Col))
+			);
+		}
+	}
+	return -1.0f * Result;
 }
 
 HOST_PREFIX DEVICE_PREFIX

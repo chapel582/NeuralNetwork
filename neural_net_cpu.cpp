@@ -581,11 +581,6 @@ void ReluBack(
 	);
 }
 
-struct softmax_layer
-{
-	matrix Intermediate;
-};
-
 void AllocSoftmaxLayer(
 	softmax_layer** Result, uint32_t BatchSize, uint32_t Dim
 )
@@ -619,44 +614,8 @@ DWORD WINAPI SoftmaxForwardThread(void* VoidArgs)
 	matrix* Inputs = Args->M1;
 	matrix* Intermediate = Args->M2;
 	matrix* Result = Args->Result;
-	uint32_t Start = Args->Start;
-	uint32_t Stride = Args->Stride;
-	for(uint32_t Row = Start; Row < Inputs->NumRows; Row += Stride)
-	{
-		// NOTE: find max for row in order to maintain numerical stability with
-		// CONT: 32-bit float
-		float RowMax = GetMatrixElement(Inputs, Row, 0);
-		for(uint32_t Col = 1; Col < Inputs->NumColumns; Col++)
-		{
-			float Value = GetMatrixElement(Inputs, Row, Col);
-			if(Value > RowMax)
-			{
-				RowMax = Value;
-			}
-		}
-
-		float Sum = 0;
-		for(uint32_t Col = 0; Col < Inputs->NumColumns; Col++)
-		{
-			float Value = (float) exp(
-				GetMatrixElement(Inputs, Row, Col) - RowMax
-			);
-			SetMatrixElement(Intermediate, Row, Col, Value);
-			Sum += Value;
-		}
-
-		assert(Sum != 0);
-
-		for(uint32_t Col = 0; Col < Inputs->NumColumns; Col++)
-		{
-			SetMatrixElement(
-				Result,
-				Row,
-				Col,
-				GetMatrixElement(Intermediate, Row, Col) / Sum
-			);
-		}
-	}
+	
+	SoftmaxForwardCore(Inputs, Intermediate, Result, Args->Start, Args->Stride);
 
 	return 0;
 }
@@ -686,18 +645,7 @@ DWORD WINAPI CrossEntropyForwardThread(void* VoidArgs)
 	int Start = Args->Start;
 	int Stride = Args->Stride;
 
-	float Result = 0.0f;
-	for(uint32_t Row = Start; Row < Predictions->NumRows; Row += Stride)
-	{
-		for(uint32_t Col = 0; Col < Predictions->NumColumns; Col++)
-		{
-			Result += (float) (
-				GetMatrixElement(Labels, Row, Col) * 
-				log(GetMatrixElement(Predictions, Row, Col))
-			);
-		}
-	}
-	Args->Float = -1.0f * Result;
+	Args->Float = XentropyForwardCore(Predictions, Labels, Start, Stride);
 	return 0;
 }
 
@@ -749,18 +697,13 @@ float CrossEntropyForward(
 	return Sum;
 }
 
-struct cross_entropy_softmax_train_data
-{
-	matrix LayerGradient;
-};
-
-void AllocCrossEntropySoftmaxTrain(
-	cross_entropy_softmax_train_data** Result, softmax_layer* SoftmaxLayer
+void AllocSoftmaxXentropyTrain(
+	softmax_xentropy_train_data** Result, softmax_layer* SoftmaxLayer
 )
 {
-	cross_entropy_softmax_train_data* TrainData = (
-		(cross_entropy_softmax_train_data*) malloc(
-			sizeof(cross_entropy_softmax_train_data)
+	softmax_xentropy_train_data* TrainData = (
+		(softmax_xentropy_train_data*) malloc(
+			sizeof(softmax_xentropy_train_data)
 		)
 	);
 
@@ -776,7 +719,7 @@ void SoftmaxCrossEntropyBack(
 	matrix_op_jobs* MatrixOpJobs,
 	matrix* Predictions, 
 	matrix* Labels, 
-	cross_entropy_softmax_train_data* TrainData
+	softmax_xentropy_train_data* TrainData
 )
 {
 	// NOTE: Predictions is the output of softmax layer
@@ -1379,11 +1322,8 @@ void AllocNeuralNetTrainer(
 					LayerLink->Data
 				);
 
-				AllocCrossEntropySoftmaxTrain(
-					(
-						(cross_entropy_softmax_train_data**) 
-						&TrainDataArray[LayerIndex]
-					),
+				AllocSoftmaxXentropyTrain(
+					(softmax_xentropy_train_data**) &TrainDataArray[LayerIndex],
 					SoftmaxLayer
 				);
 				break;
@@ -1578,8 +1518,8 @@ void TrainNeuralNet(
 				}
 				case(LayerType_SoftmaxCrossEntropy):
 				{
-					cross_entropy_softmax_train_data* XEntropyTrain = (
-						(cross_entropy_softmax_train_data*) TrainData
+					softmax_xentropy_train_data* XEntropyTrain = (
+						(softmax_xentropy_train_data*) TrainData
 					);
 
 					SoftmaxCrossEntropyBack(

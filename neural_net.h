@@ -21,6 +21,11 @@ struct dense_layer
 	matrix Bias;
 };
 
+struct softmax_layer
+{
+	matrix Intermediate;
+};
+
 struct dense_layer_train_data
 {
 	matrix WeightsDelta;
@@ -39,6 +44,11 @@ struct mse_train_data
 	matrix LayerGradient;
 };
 
+struct softmax_xentropy_train_data
+{
+	matrix LayerGradient;
+};
+
 typedef enum
 {
 	LayerType_Dense,
@@ -47,7 +57,7 @@ typedef enum
 	LayerType_CrossEntropy,
 	LayerType_SoftmaxCrossEntropy,
 	LayerType_Mse,
-	LayerType_Count
+	LayerType_Count // NOTE: doubles as invalid term!
 } layer_type;
 
 struct layer_link;
@@ -135,7 +145,19 @@ void ReluBackCore(
 	uint32_t Stride
 );
 HOST_PREFIX DEVICE_PREFIX
+void SoftmaxForwardCore(
+	matrix* Inputs,
+	matrix* Intermediate,
+	matrix* Result,
+	uint32_t Start,
+	uint32_t Stride
+);
+HOST_PREFIX DEVICE_PREFIX
 float MseForwardCore(
+	matrix* Predictions, matrix* Labels, uint32_t Start, uint32_t Stride
+);
+HOST_PREFIX DEVICE_PREFIX
+float XentropyForwardCore(
 	matrix* Predictions, matrix* Labels, uint32_t Start, uint32_t Stride
 );
 HOST_PREFIX DEVICE_PREFIX
