@@ -803,6 +803,169 @@ cudaError_t CudaMseBack(
 	return Error;
 }
 
+void CudaAllocSoftmaxLayer(
+	softmax_layer** Result, uint32_t BatchSize, uint32_t Dim
+)
+{
+	softmax_layer* SoftmaxLayer = (softmax_layer*) malloc(
+		sizeof(softmax_layer)
+	);
+	CudaInitMatrix(&SoftmaxLayer->Intermediate, BatchSize, Dim);
+	*Result = SoftmaxLayer;
+}
+
+__global__
+void CudaSoftmaxForwardThread(
+	matrix* Inputs, matrix* Intermediate, matrix* Result
+)
+{
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
+	uint32_t Stride = gridDim.x * blockDim.x;
+	SoftmaxForwardCore(Inputs, Intermediate, Result, Start, Stride);
+}
+
+cudaError_t CudaSoftmaxForward(
+	softmax_layer* SoftmaxLayer,
+	matrix* Inputs,
+	matrix* Outputs
+)
+{
+	// NOTE: only used in conjunction with cross-entropy loss right now
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(
+		GetMatrixArrayCount(Outputs), BlockSize, Device
+	);
+	CudaSoftmaxForwardThread<<<NumBlocks, BlockSize>>>(
+		Inputs, &SoftmaxLayer->Intermediate, Outputs
+	);
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
+}
+
+__device__
+void CudaXentropyForwardCore(
+	matrix* Predictions,
+	matrix* Labels,
+	float* GlobalResult,
+	float* Results,
+	uint32_t Start,
+	uint32_t Stride
+)
+{
+	Results[Start] = 0.0f;
+	Results[Start] = XentropyForwardCore(Predictions, Labels, Start, Stride);
+
+	// NOTE: single-threaded summation
+	// TODO: could try a divide-and conquer algorithm for fast summation
+	if(Start == 0)
+	{
+		float Result = 0.0f;
+		for(int Index = 0; Index < Stride; Index++)
+		{
+			Result += Results[Index];
+		}
+
+		*GlobalResult = Result / (2.0f * Predictions->NumRows);
+	}
+}
+
+__global__
+void CudaXentropyForwardThread(
+	matrix* Predictions, matrix* Labels, float* GlobalResult
+)
+{
+	extern __shared__ float Results[];
+
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
+	uint32_t Stride = gridDim.x * blockDim.x;
+
+	CudaXentropyForwardCore(
+		Predictions, Labels, GlobalResult, Results, Start, Stride
+	);
+}
+
+float CudaXentropyForward(
+	matrix* Predictions, matrix* Labels
+)
+{
+	// NOTE: only used in conjunction with softmax right now
+
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = 1; 
+	// NOTE: Num blocks has to be one b/c we need to sync before summation
+
+	float* Loss = NULL;
+	cudaMallocManaged(&Loss, sizeof(float));
+	size_t MemorySize = sizeof(float) * NumBlocks * BlockSize;
+	CudaMseForwardThread<<<NumBlocks, BlockSize, MemorySize>>>(
+		Predictions, Labels, Loss
+	);
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	// TODO: return error for handling in production code
+
+	float Result = *Loss;
+	cudaFree(Loss);
+	return Result;
+}
+
+__device__
+void CudaSoftmaxXEntropyBackCore(
+	matrix* Predictions,
+	matrix* Labels,
+	softmax_xentropy_train_data* TrainData,
+	uint32_t Start,
+	uint32_t Stride
+)
+{
+	matrix* LayerGradient = &TrainData->LayerGradient;
+	MatrixSubtractCore(
+		Labels, Predictions, LayerGradient, Start, Stride
+	);
+	MatrixScalarMultCore(
+		1.0f / Predictions->NumColumns,
+		LayerGradient,
+		LayerGradient,
+		Start,
+		Stride
+	);
+}
+
+__global__
+void CudaSoftmaxXEntropyBackThread(
+	matrix* Predictions,
+	matrix* Labels,
+	softmax_xentropy_train_data* TrainData
+)
+{
+	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
+	uint32_t Stride = gridDim.x * blockDim.x;
+
+	CudaSoftmaxXEntropyBackCore(Predictions, Labels, TrainData, Start, Stride);
+}
+
+cudaError_t CudaSoftmaxXEntropyBack(
+	matrix* Predictions,
+	matrix* Labels,
+	softmax_xentropy_train_data* TrainData
+)
+{
+	int Device = 0;
+	uint32_t BlockSize = GetBlockSize(Device);
+	uint32_t NumBlocks = GetNumBlocks(
+		GetMatrixArrayCount(&TrainData->LayerGradient), BlockSize, Device
+	);
+	CudaSoftmaxXEntropyBackThread<<<NumBlocks, BlockSize>>>(
+		Predictions, Labels, TrainData
+	);
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
+}
+
 void CudaAllocNeuralNet(
 	neural_net** Result,
 	uint32_t BatchSize,
@@ -898,6 +1061,19 @@ void CudaAddRelu(neural_net* NeuralNet)
 void CudaAddMeanSquared(neural_net* NeuralNet)
 {
 	CudaAddLayerLink(NeuralNet, LayerType_Mse);
+}
+
+void CudaAddSoftmaxXEntropy(neural_net* NeuralNet)
+{
+	uint32_t InputDim = CudaAddLayerLink(
+		NeuralNet, LayerType_SoftmaxCrossEntropy
+	);
+	layer_link* LayerLink = NeuralNet->LastLink;
+
+	CudaAllocSoftmaxLayer(
+		(softmax_layer**) &LayerLink->Data, NeuralNet->BatchSize, InputDim
+	);
+	CudaAllocMatrix(&LayerLink->Output, NeuralNet->BatchSize, InputDim);
 }
 
 void CudaFreeNeuralNet(neural_net* NeuralNet)
@@ -1095,6 +1271,7 @@ void CudaNeuralNetForward(
 			case(LayerType_Softmax):
 			{
 				// TODO: not implemented
+				assert(false);
 				break;
 			}
 
@@ -1104,6 +1281,23 @@ void CudaNeuralNetForward(
 			case(LayerType_CrossEntropy):
 			{
 				// TODO: not implemented
+				assert(false);
+				break;
+			}
+			case(LayerType_SoftmaxCrossEntropy):
+			{
+				CudaSoftmaxForward(
+					(softmax_layer*) LayerLink->Data, Inputs, Outputs
+				);
+
+				if(Predictions)
+				{
+					*Predictions = Outputs;
+				}
+				if(Labels != NULL)
+				{
+					Loss = CudaXentropyForward(Outputs, Labels);
+				}
 				break;
 			}
 			case(LayerType_Mse):
@@ -1151,7 +1345,12 @@ void CudaAllocNeuralNetTrainer(
 	{
 		case(LayerType_Mse):
 		{
-			AddMeanSquared(NeuralNet);
+			CudaAddMeanSquared(NeuralNet);
+			break;
+		}
+		case(LayerType_SoftmaxCrossEntropy):
+		{
+			CudaAddSoftmaxXEntropy(NeuralNet);
 			break;
 		}
 		case(LayerType_CrossEntropy):
@@ -1299,11 +1498,19 @@ void CudaFreeNeuralNetTrainer(neural_net_trainer* Trainer)
 			case(LayerType_Softmax):
 			{
 				// TODO: implement
+				assert(false);
 				break;
 			}
 			case(LayerType_CrossEntropy):
 			{
 				// TODO: implement
+				assert(false);
+				break;
+			}
+			case(LayerType_SoftmaxCrossEntropy):
+			{
+				// TODO: implement
+				assert(false);
 				break;
 			}
 			case(LayerType_Mse):
@@ -1405,6 +1612,18 @@ void CudaTrainNeuralNet(
 				}
 				case(LayerType_Softmax):
 				{
+					break;
+				}
+				case(LayerType_SoftmaxCrossEntropy):
+				{
+					softmax_xentropy_train_data* SoftmaxXentropyTrain = (
+						(softmax_xentropy_train_data*) TrainData
+					);
+					CudaSoftmaxXEntropyBack(
+						Predictions,
+						Labels,
+						SoftmaxXentropyTrain
+					);
 					break;
 				}
 				case(LayerType_Mse):

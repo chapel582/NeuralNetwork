@@ -21,6 +21,11 @@ struct dense_layer
 	matrix Bias;
 };
 
+struct softmax_layer
+{
+	matrix Intermediate;
+};
+
 struct dense_layer_train_data
 {
 	matrix WeightsDelta;
@@ -35,6 +40,11 @@ struct relu_train_data
 };
 
 struct mse_train_data
+{
+	matrix LayerGradient;
+};
+
+struct softmax_xentropy_train_data
 {
 	matrix LayerGradient;
 };
@@ -135,7 +145,19 @@ void ReluBackCore(
 	uint32_t Stride
 );
 HOST_PREFIX DEVICE_PREFIX
+void SoftmaxForwardCore(
+	matrix* Inputs,
+	matrix* Intermediate,
+	matrix* Result,
+	uint32_t Start,
+	uint32_t Stride
+);
+HOST_PREFIX DEVICE_PREFIX
 float MseForwardCore(
+	matrix* Predictions, matrix* Labels, uint32_t Start, uint32_t Stride
+);
+HOST_PREFIX DEVICE_PREFIX
+float XentropyForwardCore(
 	matrix* Predictions, matrix* Labels, uint32_t Start, uint32_t Stride
 );
 HOST_PREFIX DEVICE_PREFIX

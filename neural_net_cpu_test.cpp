@@ -1726,167 +1726,167 @@ int main(int argc, char* argv[])
 	// }
 	// // SECTION STOP: forward XOR with close to perfect initial weights
 
-	// // SECTION START: MNIST with MSE
-	// printf("Starting MNIST training. This may take a 2-4 minutes...\n");
-	// {
-	// 	uint32_t MiniBatchSize = 32;
-	// 	uint32_t TrainingSamples = 2048;
-	// 	uint32_t TestSamples = 100;
-	// 	uint32_t Epochs = 30;
-	// 	float TrainingAccuracyThreshold = 0.99f;
-	// 	float LossThreshold = -0.00001f;
-	// 	float LearningRate = 0.1f;
-	// 	bool PrintTraining = true;
+	// SECTION START: MNIST with MSE
+	printf("Starting MNIST training. This may take a 2-4 minutes...\n");
+	{
+		uint32_t MiniBatchSize = 32;
+		uint32_t TrainingSamples = 2048;
+		uint32_t TestSamples = 100;
+		uint32_t Epochs = 30;
+		float TrainingAccuracyThreshold = 0.99f;
+		float LossThreshold = -0.00001f;
+		float LearningRate = 0.1f;
+		bool PrintTraining = true;
 
-	// 	snprintf(
-	// 		FilePathBuffer,
-	// 		sizeof(FilePathBuffer),
-	// 		"%s/%s",
-	// 		TestDataDirectory,
-	// 		"mnist_train.csv"
-	// 	);
+		snprintf(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			"%s/%s",
+			TestDataDirectory,
+			"mnist_train.csv"
+		);
 
-	// 	matrix* Data;
-	// 	matrix* Labels;
-	// 	AllocMatrix(&Data, TrainingSamples, MNIST_DATA_SIZE);
-	// 	MatrixClear(Data);
-	// 	AllocMatrix(&Labels, TrainingSamples, MNIST_CLASS_COUNT);
-	// 	MatrixClear(Labels);
-	// 	int Result = LoadMnistDigitCsv(
-	// 		Data, Labels, TrainingSamples, FilePathBuffer
-	// 	);
+		matrix* Data;
+		matrix* Labels;
+		AllocMatrix(&Data, TrainingSamples, MNIST_DATA_SIZE);
+		MatrixClear(Data);
+		AllocMatrix(&Labels, TrainingSamples, MNIST_CLASS_COUNT);
+		MatrixClear(Labels);
+		int Result = LoadMnistDigitCsv(
+			Data, Labels, TrainingSamples, FilePathBuffer
+		);
 
-	// 	if(Result == 0)
-	// 	{
-	// 		neural_net* NeuralNet = NULL;
-	// 		AllocNeuralNet(
-	// 			&NeuralNet,
-	// 			MiniBatchSize,
-	// 			MNIST_DATA_SIZE,
-	// 			4
-	// 		);
-	// 		uint32_t HiddenDim = 64;
-	// 		AddDense(NeuralNet, HiddenDim);
-	// 		AddRelu(NeuralNet);
-	// 		AddDense(NeuralNet, HiddenDim);
-	// 		AddRelu(NeuralNet);
-	// 		AddDense(NeuralNet, MNIST_CLASS_COUNT);
+		if(Result == 0)
+		{
+			neural_net* NeuralNet = NULL;
+			AllocNeuralNet(
+				&NeuralNet,
+				MiniBatchSize,
+				MNIST_DATA_SIZE,
+				4
+			);
+			uint32_t HiddenDim = 64;
+			AddDense(NeuralNet, HiddenDim);
+			AddRelu(NeuralNet);
+			AddDense(NeuralNet, HiddenDim);
+			AddRelu(NeuralNet);
+			AddDense(NeuralNet, MNIST_CLASS_COUNT);
 
-	// 		neural_net_trainer* Trainer;
-	// 		AllocNeuralNetTrainer(
-	// 			&Trainer,
-	// 			NeuralNet,
-	// 			LearningRate,
-	// 			LayerType_Mse,
-	// 			MiniBatchSize,
-	// 			Labels->NumColumns
-	// 		);
+			neural_net_trainer* Trainer;
+			AllocNeuralNetTrainer(
+				&Trainer,
+				NeuralNet,
+				LearningRate,
+				LayerType_Mse,
+				MiniBatchSize,
+				Labels->NumColumns
+			);
 
-	// 		neural_net* FullBatchNnViewer = NULL;
-	// 		ResizedNeuralNet(&FullBatchNnViewer, NeuralNet, TrainingSamples);
-	// 		neural_net* TestNnViewer = NULL;
-	// 		ResizedNeuralNet(&TestNnViewer, NeuralNet, TestSamples);
+			neural_net* FullBatchNnViewer = NULL;
+			ResizedNeuralNet(&FullBatchNnViewer, NeuralNet, TrainingSamples);
+			neural_net* TestNnViewer = NULL;
+			ResizedNeuralNet(&TestNnViewer, NeuralNet, TestSamples);
 
-	// 		int64_t StartClock = Win32GetWallClock();
-	// 		TrainNeuralNetMiniBatch(
-	// 			Trainer,
-	// 			NeuralNet,
-	// 			Data,
-	// 			Labels,
-	// 			Epochs,
-	// 			true,
-	// 			PrintTraining,
-	// 			TrainingAccuracyThreshold,
-	// 			LossThreshold,
-	// 			FullBatchNnViewer
-	// 		);
-	// 		int64_t EndClock = Win32GetWallClock(); 
-	// 		float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
-	// 		printf("Training time seconds: %f\n", Seconds);
+			int64_t StartClock = Win32GetWallClock();
+			TrainNeuralNetMiniBatch(
+				Trainer,
+				NeuralNet,
+				Data,
+				Labels,
+				Epochs,
+				true,
+				PrintTraining,
+				TrainingAccuracyThreshold,
+				LossThreshold,
+				FullBatchNnViewer
+			);
+			int64_t EndClock = Win32GetWallClock(); 
+			float Seconds = Win32GetSecondsElapsed(StartClock, EndClock);
+			printf("Training time seconds: %f\n", Seconds);
 
-	// 		float TrainingAccuracy = TopOneAccuracy(
-	// 			FullBatchNnViewer, Data, Labels
-	// 		);
-	// 		printf("TrainingAccuracy = %f\n", TrainingAccuracy);
+			float TrainingAccuracy = TopOneAccuracy(
+				FullBatchNnViewer, Data, Labels
+			);
+			printf("TrainingAccuracy = %f\n", TrainingAccuracy);
 
-	// 		snprintf(
-	// 			FilePathBuffer,
-	// 			sizeof(FilePathBuffer),
-	// 			"%s/%s",
-	// 			TestDataDirectory,
-	// 			"mnist_test.csv"
-	// 		);
+			snprintf(
+				FilePathBuffer,
+				sizeof(FilePathBuffer),
+				"%s/%s",
+				TestDataDirectory,
+				"mnist_test.csv"
+			);
 
-	// 		matrix* TestData;
-	// 		matrix* TestLabels;
-	// 		AllocMatrix(&TestData, TestSamples, MNIST_DATA_SIZE);
-	// 		MatrixClear(TestData);
-	// 		AllocMatrix(&TestLabels, TestSamples, MNIST_CLASS_COUNT);
-	// 		MatrixClear(TestLabels);
-	// 		Result = LoadMnistDigitCsv(
-	// 			TestData, TestLabels, TestSamples, FilePathBuffer
-	// 		);
-	// 		float TestAccuracy = TopOneAccuracy(
-	// 			TestNnViewer, TestData, TestLabels
-	// 		);
-	// 		printf("TestAccuracy = %f\n", TestAccuracy);
+			matrix* TestData;
+			matrix* TestLabels;
+			AllocMatrix(&TestData, TestSamples, MNIST_DATA_SIZE);
+			MatrixClear(TestData);
+			AllocMatrix(&TestLabels, TestSamples, MNIST_CLASS_COUNT);
+			MatrixClear(TestLabels);
+			Result = LoadMnistDigitCsv(
+				TestData, TestLabels, TestSamples, FilePathBuffer
+			);
+			float TestAccuracy = TopOneAccuracy(
+				TestNnViewer, TestData, TestLabels
+			);
+			printf("TestAccuracy = %f\n", TestAccuracy);
 
-	// 		if(TestAccuracy < 0.9f)
-	// 		{
-	// 			printf("MNIST training test failed\n");
-	// 		}
+			if(TestAccuracy < 0.9f)
+			{
+				printf("MNIST training test failed\n");
+			}
 
-	// 		// SECTION START: test model saving and loading
-	// 		snprintf(
-	// 			FilePathBuffer,
-	// 			sizeof(FilePathBuffer),
-	// 			"%s/%s",
-	// 			TestDataDirectory,
-	// 			"models"
-	// 		);
-	// 		if(!PathFileExistsA(FilePathBuffer))
-	// 		{
-	// 			CreateDirectoryA(
-	// 				FilePathBuffer,
-	// 				NULL
-	// 			);
-	// 		}
-	// 		snprintf(
-	// 			FilePathBuffer,
-	// 			sizeof(FilePathBuffer),
-	// 			"%s/models/mnist_%dsamples.model",
-	// 			TestDataDirectory,
-	// 			TrainingSamples
-	// 		);
-	// 		SaveNeuralNet(NeuralNet, FilePathBuffer);
+			// SECTION START: test model saving and loading
+			snprintf(
+				FilePathBuffer,
+				sizeof(FilePathBuffer),
+				"%s/%s",
+				TestDataDirectory,
+				"models"
+			);
+			if(!PathFileExistsA(FilePathBuffer))
+			{
+				CreateDirectoryA(
+					FilePathBuffer,
+					NULL
+				);
+			}
+			snprintf(
+				FilePathBuffer,
+				sizeof(FilePathBuffer),
+				"%s/models/mnist_%dsamples.model",
+				TestDataDirectory,
+				TrainingSamples
+			);
+			SaveNeuralNet(NeuralNet, FilePathBuffer);
 
-	// 		neural_net* LoadedNeuralNet;
-	// 		LoadNeuralNet(
-	// 			&LoadedNeuralNet, FilePathBuffer, TestSamples, 4
-	// 		);
+			neural_net* LoadedNeuralNet;
+			LoadNeuralNet(
+				&LoadedNeuralNet, FilePathBuffer, TestSamples, 4
+			);
 
-	// 		float LoadedNnTestAccuracy = TopOneAccuracy(
-	// 			LoadedNeuralNet, TestData, TestLabels
-	// 		);
-	// 		printf("Loaded NN TestAccuracy = %f\n", LoadedNnTestAccuracy);
+			float LoadedNnTestAccuracy = TopOneAccuracy(
+				LoadedNeuralNet, TestData, TestLabels
+			);
+			printf("Loaded NN TestAccuracy = %f\n", LoadedNnTestAccuracy);
 
-	// 		// SECTION STOP: test model saving and loading
+			// SECTION STOP: test model saving and loading
 
-	// 		// SECTION START: test freeing neural nets
-	// 		// TODO: add a check for available memory before and after
-	// 		FreeNeuralNetTrainer(Trainer);
-	// 		FreeNeuralNet(NeuralNet);
-	// 		FreeNeuralNet(LoadedNeuralNet);
-	// 		FreeResizedNeuralNet(FullBatchNnViewer);
-	// 		FreeResizedNeuralNet(TestNnViewer);
-	// 		// SECTION STOP: test freeing neural nets
-	// 	}
-	// 	else
-	// 	{
-	// 		printf("Unable to run mnist test\n");
-	// 	}
-	// }
-	// // SECTION STOP: MNIST with MSE
+			// SECTION START: test freeing neural nets
+			// TODO: add a check for available memory before and after
+			FreeNeuralNetTrainer(Trainer);
+			FreeNeuralNet(NeuralNet);
+			FreeNeuralNet(LoadedNeuralNet);
+			FreeResizedNeuralNet(FullBatchNnViewer);
+			FreeResizedNeuralNet(TestNnViewer);
+			// SECTION STOP: test freeing neural nets
+		}
+		else
+		{
+			printf("Unable to run mnist test\n");
+		}
+	}
+	// SECTION STOP: MNIST with MSE
 
 	// SECTION START: MNIST with Softmax + X-entropy
 	printf("Starting MNIST training with softmax and X-entropy. This may take a 2-4 minutes...\n");
