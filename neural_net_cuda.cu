@@ -1174,13 +1174,19 @@ void CudaResizedNeuralNet(
 				assert(false);
 				break;
 			}
+			case(LayerType_SoftmaxCrossEntropy):
+			{
+				CudaAddSoftmaxXentropy(NeuralNet);
+				break;
+			}
 			case(LayerType_Mse):
 			{
 				CudaAddMeanSquared(NeuralNet);
 				break;
 			}
 			default:
-			{				
+			{
+				assert(false);				
 				break;
 			}
 		}
