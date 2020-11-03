@@ -898,7 +898,7 @@ float CudaXentropyForward(
 	float* Loss = NULL;
 	cudaMallocManaged(&Loss, sizeof(float));
 	size_t MemorySize = sizeof(float) * NumBlocks * BlockSize;
-	CudaMseForwardThread<<<NumBlocks, BlockSize, MemorySize>>>(
+	CudaXentropyForwardThread<<<NumBlocks, BlockSize, MemorySize>>>(
 		Predictions, Labels, Loss
 	);
 	cudaError_t Error = cudaDeviceSynchronize();
