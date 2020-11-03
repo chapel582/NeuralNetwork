@@ -697,7 +697,7 @@ float CrossEntropyForward(
 	return Sum;
 }
 
-void AllocCrossEntropySoftmaxTrain(
+void AllocSoftmaxXentropyTrain(
 	softmax_xentropy_train_data** Result, softmax_layer* SoftmaxLayer
 )
 {
@@ -1322,11 +1322,8 @@ void AllocNeuralNetTrainer(
 					LayerLink->Data
 				);
 
-				AllocCrossEntropySoftmaxTrain(
-					(
-						(softmax_xentropy_train_data**) 
-						&TrainDataArray[LayerIndex]
-					),
+				AllocSoftmaxXentropyTrain(
+					(softmax_xentropy_train_data**) &TrainDataArray[LayerIndex],
 					SoftmaxLayer
 				);
 				break;

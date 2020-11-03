@@ -57,7 +57,7 @@ typedef enum
 	LayerType_CrossEntropy,
 	LayerType_SoftmaxCrossEntropy,
 	LayerType_Mse,
-	LayerType_Count
+	LayerType_Count // NOTE: doubles as invalid term!
 } layer_type;
 
 struct layer_link;

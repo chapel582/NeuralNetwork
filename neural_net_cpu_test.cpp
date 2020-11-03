@@ -1933,13 +1933,13 @@ int main(int argc, char* argv[])
 			AddDense(NeuralNet, HiddenDim);
 			AddRelu(NeuralNet);
 			AddDense(NeuralNet, MNIST_CLASS_COUNT);
-
+			AddSoftmaxCrossEntropy(NeuralNet);
 			neural_net_trainer* Trainer;
 			AllocNeuralNetTrainer(
 				&Trainer,
 				NeuralNet,
 				LearningRate,
-				LayerType_SoftmaxCrossEntropy,
+				LayerType_Count,
 				MiniBatchSize,
 				Labels->NumColumns
 			);

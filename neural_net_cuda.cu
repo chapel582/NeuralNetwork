@@ -807,11 +807,9 @@ void CudaAllocSoftmaxLayer(
 	softmax_layer** Result, uint32_t BatchSize, uint32_t Dim
 )
 {
-	softmax_layer* SoftmaxLayer = (softmax_layer*) malloc(
-		sizeof(softmax_layer)
-	);
+	cudaMallocManaged(Result, sizeof(softmax_layer));
+	softmax_layer* SoftmaxLayer = *Result;
 	CudaInitMatrix(&SoftmaxLayer->Intermediate, BatchSize, Dim);
-	*Result = SoftmaxLayer;
 }
 
 __global__
@@ -913,7 +911,7 @@ float CudaXentropyForward(
 }
 
 __device__
-void CudaSoftmaxXEntropyBackCore(
+void CudaSoftmaxXentropyBackCore(
 	matrix* Predictions,
 	matrix* Labels,
 	softmax_xentropy_train_data* TrainData,
@@ -935,7 +933,7 @@ void CudaSoftmaxXEntropyBackCore(
 }
 
 __global__
-void CudaSoftmaxXEntropyBackThread(
+void CudaSoftmaxXentropyBackThread(
 	matrix* Predictions,
 	matrix* Labels,
 	softmax_xentropy_train_data* TrainData
@@ -944,10 +942,10 @@ void CudaSoftmaxXEntropyBackThread(
 	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
 	uint32_t Stride = gridDim.x * blockDim.x;
 
-	CudaSoftmaxXEntropyBackCore(Predictions, Labels, TrainData, Start, Stride);
+	CudaSoftmaxXentropyBackCore(Predictions, Labels, TrainData, Start, Stride);
 }
 
-cudaError_t CudaSoftmaxXEntropyBack(
+cudaError_t CudaSoftmaxXentropyBack(
 	matrix* Predictions,
 	matrix* Labels,
 	softmax_xentropy_train_data* TrainData
@@ -958,7 +956,7 @@ cudaError_t CudaSoftmaxXEntropyBack(
 	uint32_t NumBlocks = GetNumBlocks(
 		GetMatrixArrayCount(&TrainData->LayerGradient), BlockSize, Device
 	);
-	CudaSoftmaxXEntropyBackThread<<<NumBlocks, BlockSize>>>(
+	CudaSoftmaxXentropyBackThread<<<NumBlocks, BlockSize>>>(
 		Predictions, Labels, TrainData
 	);
 	cudaError_t Error = cudaDeviceSynchronize();
@@ -1063,7 +1061,7 @@ void CudaAddMeanSquared(neural_net* NeuralNet)
 	CudaAddLayerLink(NeuralNet, LayerType_Mse);
 }
 
-void CudaAddSoftmaxXEntropy(neural_net* NeuralNet)
+void CudaAddSoftmaxXentropy(neural_net* NeuralNet)
 {
 	uint32_t InputDim = CudaAddLayerLink(
 		NeuralNet, LayerType_SoftmaxCrossEntropy
@@ -1205,6 +1203,27 @@ void CudaFreeMseTrainData(mse_train_data* TrainData)
 	CudaFreeMatrixData(&TrainData->LayerGradient);
 	cudaFree(TrainData);
 }
+
+void CudaAllocSoftmaxXentropyTrainData(
+	softmax_xentropy_train_data** Result, softmax_layer* SoftmaxLayer
+)
+{
+	cudaMallocManaged(Result, sizeof(softmax_xentropy_train_data));
+	softmax_xentropy_train_data* TrainData = *Result;
+	*TrainData = {};
+	CudaInitMatrix(
+		&TrainData->LayerGradient,
+		SoftmaxLayer->Intermediate.NumRows,
+		SoftmaxLayer->Intermediate.NumColumns
+	);
+}
+
+// TODO: implement
+// void CudaFreeMseTrainData(mse_train_data* TrainData)
+// {
+// 	CudaFreeMatrixData(&TrainData->LayerGradient);
+// 	cudaFree(TrainData);
+// }
 
 void CudaFreeResizedNeuralNet(neural_net* NeuralNet)
 {
@@ -1350,7 +1369,7 @@ void CudaAllocNeuralNetTrainer(
 		}
 		case(LayerType_SoftmaxCrossEntropy):
 		{
-			CudaAddSoftmaxXEntropy(NeuralNet);
+			CudaAddSoftmaxXentropy(NeuralNet);
 			break;
 		}
 		case(LayerType_CrossEntropy):
@@ -1427,6 +1446,15 @@ void CudaAllocNeuralNetTrainer(
 				// 	),
 				// 	SoftmaxLayer
 				// );
+				break;
+			}
+			case(LayerType_SoftmaxCrossEntropy):
+			{
+				softmax_layer* SoftmaxLayer = (softmax_layer*) LayerLink->Data;
+				CudaAllocSoftmaxXentropyTrainData(
+					(softmax_xentropy_train_data**) &TrainDataArray[LayerIndex],
+					SoftmaxLayer
+				);
 				break;
 			}
 			case(LayerType_Mse):
@@ -1619,11 +1647,12 @@ void CudaTrainNeuralNet(
 					softmax_xentropy_train_data* SoftmaxXentropyTrain = (
 						(softmax_xentropy_train_data*) TrainData
 					);
-					CudaSoftmaxXEntropyBack(
+					CudaSoftmaxXentropyBack(
 						Predictions,
 						Labels,
 						SoftmaxXentropyTrain
 					);
+					NextLayerGradient = &SoftmaxXentropyTrain->LayerGradient;
 					break;
 				}
 				case(LayerType_Mse):
@@ -1691,8 +1720,6 @@ void CudaMakeIntShuffler(int_shuffler** Result, uint32_t Range)
 	int_shuffler* IntShuffler = *Result;
 
 	IntShuffler->Range = Range;
-	// IntShuffler.Cells = (linked_int*) malloc(sizeof(linked_int) * Range);
-	// IntShuffler.Result = (int*) malloc(sizeof(int) * Range);
 	cudaMallocManaged(&IntShuffler->Cells, sizeof(linked_int) * Range);
 	cudaMallocManaged(&IntShuffler->Result, sizeof(int) * Range);
 }
