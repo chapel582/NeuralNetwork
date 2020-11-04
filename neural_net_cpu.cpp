@@ -1767,3 +1767,13 @@ void LoadNeuralNet(
 
 	fclose(File);
 }
+
+void ConvForward(
+	matrix* Inputs,
+	uint32_t PrevChannelCount,
+	matrix* Weights,
+	float* Bias,
+	uint32_t ChannelCount
+)
+{
+}
