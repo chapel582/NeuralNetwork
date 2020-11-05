@@ -1759,7 +1759,7 @@ void LoadNeuralNet(
 				break;
 			}
 			default:
-			{				
+			{
 				break;
 			}
 		}
@@ -1768,12 +1768,59 @@ void LoadNeuralNet(
 	fclose(File);
 }
 
-void ConvForward(
-	matrix* Inputs,
-	uint32_t PrevChannelCount,
-	matrix* Weights,
-	float* Bias,
-	uint32_t ChannelCount
+struct cnn_layer
+{
+	uint32_t Stride;
+
+	uint32_t ChannelCount;
+
+	// TODO: we assume 2d filters. we might need to handle 3d filters? or even n dimensional filters...?
+	uint32_t FilterDim;
+	float* Filter;
+
+	float* Bias;
+};
+
+float* GetFilter(
+	float* Filter,
+	uint32_t FilterDim,
+	uint32_t ChannelCount,
+	uint32_t ChannelIndex
 )
 {
+	assert(ChannelIndex < ChannelCount);
+	return Filter + (ChannelIndex * FilterDim * FilterDim);
+}
+
+void AllocCnn(
+	cnn_layer** Result,
+	uint32_t Stride,
+	uint32_t ChannelCount,
+	uint32_t FilterDim
+)
+{
+	*Result = (cnn_layer*) malloc(sizeof(cnn_layer));
+	cnn_layer* CnnLayer = *Result;
+
+	*CnnLayer = {};
+	CnnLayer->Stride = Stride;
+	CnnLayer->ChannelCount = ChannelCount;
+	CnnLayer->FilterDim = FilterDim;
+	CnnLayer->Filter = (float*) malloc(
+		FilterDim * FilterDim * CnnLayer->ChannelCount * sizeof(float)
+	);
+	CnnLayer->Bias = (float*) malloc(CnnLayer->ChannelCount * sizeof(float));
+}
+
+void ConvForward(
+	float* Inputs,
+	uint32_t PrevWidth,
+	uint32_t PrevHeight,
+	uint32_t PrevChannelCount,
+	uint32_t BatchSize,
+	cnn_layer* CnnLayer,
+	uint32_t Pad
+)
+{
+	
 }
