@@ -849,6 +849,7 @@ void AllocNeuralNet(
 
 uint32_t AddLayerLink(neural_net* NeuralNet, layer_type LayerType)
 {
+	// TODO: probably should rename this function to no-parameter layer link
 	layer_link* LayerLink = (layer_link*) malloc(sizeof(layer_link));
 	*LayerLink = {};
 	LayerLink->Type = LayerType;
@@ -1768,9 +1769,15 @@ void LoadNeuralNet(
 	fclose(File);
 }
 
-struct cnn_layer
+struct conv_layer
 {
 	uint32_t Stride;
+	uint32_t Pad;
+
+	uint32_t InputWidth;
+	uint32_t InputHeight;
+	uint32_t OutputWidth;
+	uint32_t OuputHeight;
 
 	uint32_t ChannelCount;
 
@@ -1792,24 +1799,87 @@ float* GetFilter(
 	return Filter + (ChannelIndex * FilterDim * FilterDim);
 }
 
-void AllocCnn(
-	cnn_layer** Result,
+void AllocConv(
+	conv_layer** Result,
+	uint32_t FilterDim,
 	uint32_t Stride,
-	uint32_t ChannelCount,
-	uint32_t FilterDim
+	uint32_t PrevChannelCount,
+	uint32_t ChannelCount
 )
 {
-	*Result = (cnn_layer*) malloc(sizeof(cnn_layer));
-	cnn_layer* CnnLayer = *Result;
+	*Result = (conv_layer*) malloc(sizeof(conv_layer));
+	conv_layer* ConvLayer = *Result;
 
-	*CnnLayer = {};
-	CnnLayer->Stride = Stride;
-	CnnLayer->ChannelCount = ChannelCount;
-	CnnLayer->FilterDim = FilterDim;
-	CnnLayer->Filter = (float*) malloc(
-		FilterDim * FilterDim * CnnLayer->ChannelCount * sizeof(float)
+	*ConvLayer = {};
+	ConvLayer->Stride = Stride;
+	ConvLayer->ChannelCount = ChannelCount;
+	ConvLayer->FilterDim = FilterDim;
+	ConvLayer->Filter = (float*) malloc(
+		(FilterDim * FilterDim) * 
+		ConvLayer->ChannelCount * 
+		PrevChannelCount * 
+		sizeof(float)
 	);
-	CnnLayer->Bias = (float*) malloc(CnnLayer->ChannelCount * sizeof(float));
+	ConvLayer->Bias = (float*) malloc(ConvLayer->ChannelCount * sizeof(float));
+}
+
+void InitConv(conv_layer* ConvLayer, uint32_t InputWidth, uint32_t InputHeight)
+{
+	ConvLayer->InputWidth = InputWidth;
+	ConvLayer->InputHeight = InputHeight;
+
+	ConvLayer->OutputWidth = (
+		((InputWidth - ConvLayer->FilterDim + 2 * ConvLayer->Pad) / stride) + 1
+	);
+	ConvLayer->OutputHeight = (
+		((InputHeight - ConvLayer->FilterDim + 2 * ConvLayer->Pad) / stride) + 1
+	);
+}
+
+void AllocConvOutput(void** Output, conv_layer* ConvLayer)
+{
+	*Output = malloc(
+		ConvLayer->ChannelCount * 
+		ConvLayer->OutputWidth * 
+		ConvLayer->OutputHeight * 
+		sizeof(float)
+	);
+}
+
+void AddConv(
+	neural_net* NeuralNet,
+	uint32_t FilterDim,
+	uint32_t Stride,
+	uint32_t Pad,
+	uint32_t ChannelCount
+)
+{
+	// NOTE: function is for adding a Conv after a conv layer
+	layer_link* LayerLink = (layer_link*) malloc(sizeof(layer_link));
+	*LayerLink = {};
+	uint32_t PrevChannelCount = 0;
+	
+	LayerLink->Previous = NeuralNet->LastLink;
+	NeuralNet->LastLink->Next = LayerLink;
+	NeuralNet->LastLink = LayerLink;
+	conv_layer* PrevConv = (conv_layer*) NeuralNet->LastLink->Data;
+	PrevChannelCount = PrevConv->ChannelCount;
+	uint32_t InputWidth = PrevConv->OutputWidth;
+	uint32_t InputHeight = PrevConv->OutputHeight;
+
+	LayerLink->Type = LayerType_Conv;
+
+	AllocConv(
+		(conv_layer**) &LayerLink->Data,
+		FilterDim,
+		Stride,
+		PrevChannelCount,
+		ChannelCount
+	);
+	InitConv((conv_layer*) LayerLink->Data, InputWidth, InputHeight);
+	AllocConvOutput(&LayerLink->Output, (conv_layer*) LayerLink->Data);
+
+	NeuralNet->NumLayers++;
 }
 
 void ConvForward(
@@ -1818,8 +1888,7 @@ void ConvForward(
 	uint32_t PrevHeight,
 	uint32_t PrevChannelCount,
 	uint32_t BatchSize,
-	cnn_layer* CnnLayer,
-	uint32_t Pad
+	conv_layer* ConvLayer
 )
 {
 	

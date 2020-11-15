@@ -65,7 +65,7 @@ struct layer_link
 {
 	layer_type Type;
 	void* Data;
-	matrix* Output;
+	void* Output;
 	layer_link* Next;
 	layer_link* Previous;
 };
