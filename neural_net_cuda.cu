@@ -698,6 +698,8 @@ void CudaMseForwardCore(
 	Results[Start] = 0.0f;
 	Results[Start] = MseForwardCore(Predictions, Labels, Start, Stride);
 
+	__syncthreads();
+
 	// NOTE: single-threaded summation
 	// TODO: could try a divide-and conquer algorithm for fast summation
 	if(Start == 0)
