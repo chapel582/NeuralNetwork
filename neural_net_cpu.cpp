@@ -1836,14 +1836,19 @@ void InitConv(conv_layer* ConvLayer, uint32_t InputWidth, uint32_t InputHeight)
 	);
 }
 
-void AllocConvOutput(void** Output, conv_layer* ConvLayer)
+inline uint32_t ConvOutputSize(conv_layer* ConvLayer)
 {
-	*Output = malloc(
+	return (
 		ConvLayer->ChannelCount * 
 		ConvLayer->OutputWidth * 
 		ConvLayer->OutputHeight * 
 		sizeof(float)
 	);
+}
+
+void AllocConvOutput(void** Output, conv_layer* ConvLayer)
+{
+	*Output = malloc(ConvOutputSize(ConvLayer));
 }
 
 void AddConv(
@@ -1882,14 +1887,146 @@ void AddConv(
 	NeuralNet->NumLayers++;
 }
 
-void ConvForward(
+inline float* GetChannelElement(
 	float* Inputs,
-	uint32_t PrevWidth,
-	uint32_t PrevHeight,
-	uint32_t PrevChannelCount,
-	uint32_t BatchSize,
-	conv_layer* ConvLayer
+	uint32_t ChannelCount,
+	uint32_t InputWidth,
+	uint32_t InputHeight,
+	uint32_t ChannelIndex,
+	uint32_t X,
+	uint32_t Y
 )
 {
-	
+	return (
+		Inputs + ChannelIndex * InputWidth * InputHeight + Y * InputWidth + X
+	);
+}
+
+void ZeroPad(
+	float* Inputs,
+	uint32_t Pad,
+	uint32_t ChannelCount,
+	uint32_t PostPadWidth,
+	uint32_t PostPadHeight
+)
+{
+	for(uint32_t ChannelIndex = 0; ChannelIndex < ; ChannelIndex++)
+	{
+		// NOTE: 0 fill first two rows
+		for(uint32_t Y = 0; Y < Pad; Y++)
+		{
+			for(uint32_t X = 0; X < PostPadWidth; X++)
+			{
+				float* Element = GetChannelElement(
+					Inputs,
+					ChannelCount,
+					PostPadWidth,
+					PostPadHeight,
+					ChannelIndex,
+					X,
+					Y
+				);
+				*Element = 0.0f;
+			}
+		}
+		// NOTE: 0 fill first two columns
+		for(uint32_t Y = 0; Y < PostPadHeight; Y++)
+		{
+			for(uint32_t X = 0; X < Pad; X++)
+			{
+				float* Element = GetChannelElement(
+					Inputs,
+					ChannelCount,
+					PostPadWidth,
+					PostPadHeight,
+					ChannelIndex,
+					X,
+					Y
+				);
+				*Element = 0.0f;
+			}
+		}
+	}
+}
+
+void ConvForwardCore(
+	float* Inputs,
+	uint32_t PrevChannelCount,
+	uint32_t BatchSize,
+	conv_layer* ConvLayer,
+	uint32_t ThreadIndex,
+	uint32_t ThreadCount,
+	float* Output,
+	uint32_t OutputSize
+)
+{
+	assert(OutputSize == ConvOutputSize(ConvLayer));
+
+	uint32_t XBound = ConvLayer->InputWidth - ConvLayer->Pad;
+	uint32_t YBound = ConvLayer->InputHeight - ConvLayer->Pad;
+
+	// TODO: explore fancier algorithms that take advantage of cache locality
+	for(
+		uint32_t InputElementIndex = ThreadIndex;
+		InputElementIndex < OutputSize;
+		InputElementIndex += ThreadCount
+	)
+	{
+		// float* ResultElement = Output + ResultElementIndex;
+		// TODO: double check these x and y calculations
+		// uint32_t ChannelElementCount = (
+		// 	ConvLayer->OutputWidth * ConvLayer->OutputHeight
+		// );
+		// uint32_t ResultChannelIndex = ResultElementIndex / ChannelElementCount;
+		// uint32_t OffsetResultElementIndex = (
+		// 	ResultElementIndex % ChannelElementCount
+		// );
+		// uint32_t ResultY = OffsetResultElementIndex / ConvLayer->OutputWidth;
+		// uint32_t ResultX = OffsetResultElementIndex % ConvLayer->OutputWidth;
+		// for(
+		// 	uint32_t X = 0; X < ConvLayer->FilterDim; X++
+		// )
+		// {
+		// 	for(uint32_t Y = 0; Y < ConvLayer->FilterDim; Y++)
+		// 	{
+		// 		GetElementFromConv(
+		// 			Inputs, ResultChannelIndex, ResultX + X, ResultY + Y
+		// 		);
+		// 	}
+		// }
+		
+		// TODO: need to include batch size in these calculations
+		uint32_t ChannelElementCount = (
+			ConvLayer->OutputWidth * ConvLayer->OutputHeight
+		);
+		uint32_t InputChannelIndex = InputElementIndex / ChannelElementCount;
+		uint32_t OffsetInputElementIndex = (
+			InputElementIndex % ChannelElementCount
+		);
+		uint32_t InputY = OffsetInputElementIndex / ConvLayer->OutputWidth;
+		uint32_t InputX = OffsetInputElementIndex % ConvLayer->OutputWidth;
+		if(InputX >= XBound || InputY >= YBound)
+		{
+			continue;
+		}
+
+		float Sum = 0.0f;
+		for(uint32_t X = 0; X < ConvLayer->FilterDim; X++)
+		{
+			for(uint32_t Y = 0; Y < ConvLayer->FilterDim; Y++)
+			{
+				float FilterElement = GetFilterElement(ConvLayer, OutputChannelIndex, X, Y);
+				float InputElement = GetChannelElement(
+					Inputs,
+					PrevChannelCount,
+					ConvLayer->InputWidth,
+					ConvLayer->InputHeight,
+					InputChannelIndex,
+					InputX + X,
+					InputY + Y
+				);
+				Sum += FilterElement * InputElement;
+			}
+		}
+	}
 }
