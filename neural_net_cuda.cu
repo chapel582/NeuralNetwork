@@ -691,26 +691,30 @@ void CudaMseForwardCore(
 	matrix* Labels,
 	float* GlobalResult,
 	float* Results,
-	uint32_t Start,
-	uint32_t Stride
+	uint32_t ThreadId,
+	uint32_t NumThreads
 )
 {
-	Results[Start] = 0.0f;
-	Results[Start] = MseForwardCore(Predictions, Labels, Start, Stride);
+	Results[ThreadId] = 0.0f;
+	Results[ThreadId] = MseForwardCore(
+		Predictions, Labels, ThreadId, NumThreads
+	);
 
 	__syncthreads();
-
-	// NOTE: single-threaded summation
-	// TODO: could try a divide-and conquer algorithm for fast summation
-	if(Start == 0)
+	
+	for(uint32_t Step = 1; Step < NumThreads / 2; Step *= 2)
 	{
-		float Result = 0.0f;
-		for(int Index = 0; Index < Stride; Index++)
+		if(ThreadId % (2 * Step) == 0)
 		{
-			Result += Results[Index];
+			Results[ThreadId] += Results[ThreadId + Step];
 		}
+		__syncthreads();
+	}
 
-		*GlobalResult = Result / (2.0f * Predictions->NumRows);
+	// NOTE: only branch divergence happens at the end
+	if(ThreadId == 0)
+	{
+		*GlobalResult = Results[0] / (2.0f * Predictions->NumRows);
 	}
 }
 
@@ -721,11 +725,11 @@ void CudaMseForwardThread(
 {
 	extern __shared__ float Results[];
 
-	uint32_t Start = blockIdx.x * blockDim.x + threadIdx.x;
-	uint32_t Stride = gridDim.x * blockDim.x;
+	uint32_t ThreadId = blockIdx.x * blockDim.x + threadIdx.x;
+	uint32_t NumThreads = gridDim.x * blockDim.x;
 
 	CudaMseForwardCore(
-		Predictions, Labels, GlobalResult, Results, Start, Stride
+		Predictions, Labels, GlobalResult, Results, ThreadId, NumThreads
 	);
 }
 
