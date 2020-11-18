@@ -853,7 +853,8 @@ uint32_t AddLayerLink(neural_net* NeuralNet, layer_type LayerType)
 	layer_link* LayerLink = (layer_link*) malloc(sizeof(layer_link));
 	*LayerLink = {};
 	LayerLink->Type = LayerType;
-	uint32_t InputDim = NeuralNet->LastLink->Output->NumColumns;
+	matrix* Output = (matrix*) NeuralNet->LastLink->Output;
+	uint32_t InputDim = Output->NumColumns;
 	NeuralNet->LastLink->Next = LayerLink;
 	LayerLink->Previous = NeuralNet->LastLink;
 	LayerLink->Next = NULL;
@@ -867,7 +868,7 @@ void FreeLayerLink(layer_link* LayerLink)
 {
 	if(LayerLink->Output != NULL)
 	{
-		FreeMatrix(LayerLink->Output);
+		FreeMatrix((matrix*) LayerLink->Output);
 	}
 	free(LayerLink);
 }
@@ -878,7 +879,7 @@ void AddDense(
 {
 	layer_link* LayerLink = (layer_link*) malloc(sizeof(layer_link));
 	*LayerLink = {};
-	uint32_t InputDim;
+	uint32_t InputDim = 0;
 	if(NeuralNet->NumLayers == 0)
 	{
 		InputDim = NeuralNet->InputDim;
@@ -889,7 +890,8 @@ void AddDense(
 	}
 	else
 	{
-		InputDim = NeuralNet->LastLink->Output->NumColumns;
+		matrix* Output = (matrix*) NeuralNet->LastLink->Output;
+		InputDim = Output->NumColumns;
 		LayerLink->Previous = NeuralNet->LastLink;
 		NeuralNet->LastLink->Next = LayerLink;
 		NeuralNet->LastLink = LayerLink;
@@ -908,7 +910,7 @@ void AddDense(
 			OutputDim
 		);
 	}
-	AllocMatrix(&LayerLink->Output, NeuralNet->BatchSize, OutputDim);
+	AllocMatrix((matrix**) &LayerLink->Output, NeuralNet->BatchSize, OutputDim);
 
 	NeuralNet->NumLayers++;
 }
@@ -918,7 +920,7 @@ void AddRelu(neural_net* NeuralNet)
 	uint32_t InputDim = AddLayerLink(NeuralNet, LayerType_Relu);
 	layer_link* LayerLink = NeuralNet->LastLink;
 
-	AllocMatrix(&LayerLink->Output, NeuralNet->BatchSize, InputDim);
+	AllocMatrix((matrix**) &LayerLink->Output, NeuralNet->BatchSize, InputDim);
 }
 
 void AddSoftmax(neural_net* NeuralNet)
@@ -929,7 +931,7 @@ void AddSoftmax(neural_net* NeuralNet)
 	AllocSoftmaxLayer(
 		(softmax_layer**) &LayerLink->Data, NeuralNet->BatchSize, InputDim
 	);
-	AllocMatrix(&LayerLink->Output, NeuralNet->BatchSize, InputDim);
+	AllocMatrix((matrix**) &LayerLink->Output, NeuralNet->BatchSize, InputDim);
 }
 
 void AddCrossEntropy(neural_net* NeuralNet)
@@ -945,7 +947,7 @@ void AddSoftmaxCrossEntropy(neural_net* NeuralNet)
 	AllocSoftmaxLayer(
 		(softmax_layer**) &LayerLink->Data, NeuralNet->BatchSize, InputDim
 	);
-	AllocMatrix(&LayerLink->Output, NeuralNet->BatchSize, InputDim);
+	AllocMatrix((matrix**) &LayerLink->Output, NeuralNet->BatchSize, InputDim);
 }
 
 void AddMeanSquared(neural_net* NeuralNet)
@@ -1116,7 +1118,7 @@ void NeuralNetForward(
 		LayerIndex++
 	)
 	{
-		Outputs = LayerLink->Output;
+		Outputs = (matrix*) LayerLink->Output;
 		switch(LayerLink->Type)
 		{
 			case(LayerType_Dense):
@@ -1296,7 +1298,7 @@ void AllocNeuralNetTrainer(
 			case(LayerType_Relu):
 			{
 				layer_link* PreviousLayer = LayerLink->Previous;
-				matrix* PrevOutputs = PreviousLayer->Output;
+				matrix* PrevOutputs = (matrix*) PreviousLayer->Output;
 				AllocReluTrain(
 					(relu_train_data**) &TrainDataArray[LayerIndex],
 					NeuralNet->BatchSize,
@@ -1332,7 +1334,7 @@ void AllocNeuralNetTrainer(
 			case(LayerType_Mse):
 			{
 				layer_link* PreviousLayer = LayerLink->Previous;
-				matrix* PrevOutputs = PreviousLayer->Output;
+				matrix* PrevOutputs = (matrix*) PreviousLayer->Output;
 				AllocMseTrainData(
 					(mse_train_data**) &TrainDataArray[LayerIndex],
 					NeuralNet->BatchSize,
@@ -1470,7 +1472,7 @@ void TrainNeuralNet(
 			matrix* LayerInputs;
 			if(PreviousLayer != NULL)
 			{
-				LayerInputs = PreviousLayer->Output;
+				LayerInputs = (matrix*) PreviousLayer->Output;
 			}
 			else
 			{
@@ -1777,7 +1779,7 @@ struct conv_layer
 	uint32_t InputWidth;
 	uint32_t InputHeight;
 	uint32_t OutputWidth;
-	uint32_t OuputHeight;
+	uint32_t OutputHeight;
 
 	uint32_t ChannelCount;
 
@@ -1829,10 +1831,16 @@ void InitConv(conv_layer* ConvLayer, uint32_t InputWidth, uint32_t InputHeight)
 	ConvLayer->InputHeight = InputHeight;
 
 	ConvLayer->OutputWidth = (
-		((InputWidth - ConvLayer->FilterDim + 2 * ConvLayer->Pad) / stride) + 1
+		(
+			(InputWidth - ConvLayer->FilterDim + 2 * ConvLayer->Pad) / 
+			ConvLayer->Stride
+		) + 1
 	);
 	ConvLayer->OutputHeight = (
-		((InputHeight - ConvLayer->FilterDim + 2 * ConvLayer->Pad) / stride) + 1
+		(
+			(InputHeight - ConvLayer->FilterDim + 2 * ConvLayer->Pad) / 
+			ConvLayer->Stride
+		) + 1
 	);
 }
 
@@ -1851,45 +1859,44 @@ void AllocConvOutput(void** Output, conv_layer* ConvLayer)
 	*Output = malloc(ConvOutputSize(ConvLayer));
 }
 
-void AddConv(
-	neural_net* NeuralNet,
-	uint32_t FilterDim,
-	uint32_t Stride,
-	uint32_t Pad,
-	uint32_t ChannelCount
-)
-{
-	// NOTE: function is for adding a Conv after a conv layer
-	layer_link* LayerLink = (layer_link*) malloc(sizeof(layer_link));
-	*LayerLink = {};
-	uint32_t PrevChannelCount = 0;
+// void AddConv(
+// 	neural_net* NeuralNet,
+// 	uint32_t FilterDim,
+// 	uint32_t Stride,
+// 	uint32_t Pad,
+// 	uint32_t ChannelCount
+// )
+// {
+// 	// NOTE: function is for adding a Conv after a conv layer
+// 	layer_link* LayerLink = (layer_link*) malloc(sizeof(layer_link));
+// 	*LayerLink = {};
+// 	uint32_t PrevChannelCount = 0;
 	
-	LayerLink->Previous = NeuralNet->LastLink;
-	NeuralNet->LastLink->Next = LayerLink;
-	NeuralNet->LastLink = LayerLink;
-	conv_layer* PrevConv = (conv_layer*) NeuralNet->LastLink->Data;
-	PrevChannelCount = PrevConv->ChannelCount;
-	uint32_t InputWidth = PrevConv->OutputWidth;
-	uint32_t InputHeight = PrevConv->OutputHeight;
+// 	LayerLink->Previous = NeuralNet->LastLink;
+// 	NeuralNet->LastLink->Next = LayerLink;
+// 	NeuralNet->LastLink = LayerLink;
+// 	conv_layer* PrevConv = (conv_layer*) NeuralNet->LastLink->Data;
+// 	PrevChannelCount = PrevConv->ChannelCount;
+// 	uint32_t InputWidth = PrevConv->OutputWidth;
+// 	uint32_t InputHeight = PrevConv->OutputHeight;
 
-	LayerLink->Type = LayerType_Conv;
+// 	LayerLink->Type = LayerType_Conv;
 
-	AllocConv(
-		(conv_layer**) &LayerLink->Data,
-		FilterDim,
-		Stride,
-		PrevChannelCount,
-		ChannelCount
-	);
-	InitConv((conv_layer*) LayerLink->Data, InputWidth, InputHeight);
-	AllocConvOutput(&LayerLink->Output, (conv_layer*) LayerLink->Data);
+// 	AllocConv(
+// 		(conv_layer**) &LayerLink->Data,
+// 		FilterDim,
+// 		Stride,
+// 		PrevChannelCount,
+// 		ChannelCount
+// 	);
+// 	InitConv((conv_layer*) LayerLink->Data, InputWidth, InputHeight);
+// 	AllocConvOutput(&LayerLink->Output, (conv_layer*) LayerLink->Data);
 
-	NeuralNet->NumLayers++;
-}
+// 	NeuralNet->NumLayers++;
+// }
 
 inline float* GetChannelElement(
 	float* Inputs,
-	uint32_t ChannelCount,
 	uint32_t InputWidth,
 	uint32_t InputHeight,
 	uint32_t ChannelIndex,
@@ -1902,6 +1909,32 @@ inline float* GetChannelElement(
 	);
 }
 
+void PrintConvData(
+	float* Output, uint32_t ChannelCount, uint32_t Width, uint32_t Height
+)
+{
+	for(
+		uint32_t ChannelIndex = 0;
+		ChannelIndex < ChannelCount;
+		ChannelIndex++
+	)
+	{
+		printf("Channel %d\n", ChannelIndex);
+		for(uint32_t Y = 0; Y < Height; Y++)
+		{
+			printf("[");
+			for(uint32_t X = 0; X < Width; X++)
+			{
+				float* Element = GetChannelElement(
+					Output, Width, Height, ChannelIndex, X, Y
+				);
+				printf("%f, ", *Element);
+			}
+			printf("]\n");
+		}
+	}
+}
+
 void ZeroPad(
 	float* Inputs,
 	uint32_t Pad,
@@ -1910,7 +1943,7 @@ void ZeroPad(
 	uint32_t PostPadHeight
 )
 {
-	for(uint32_t ChannelIndex = 0; ChannelIndex < ; ChannelIndex++)
+	for(uint32_t ChannelIndex = 0; ChannelIndex < ChannelCount; ChannelIndex++)
 	{
 		// NOTE: 0 fill first two rows
 		for(uint32_t Y = 0; Y < Pad; Y++)
@@ -1919,7 +1952,6 @@ void ZeroPad(
 			{
 				float* Element = GetChannelElement(
 					Inputs,
-					ChannelCount,
 					PostPadWidth,
 					PostPadHeight,
 					ChannelIndex,
@@ -1936,7 +1968,6 @@ void ZeroPad(
 			{
 				float* Element = GetChannelElement(
 					Inputs,
-					ChannelCount,
 					PostPadWidth,
 					PostPadHeight,
 					ChannelIndex,
@@ -1949,84 +1980,84 @@ void ZeroPad(
 	}
 }
 
-void ConvForwardCore(
-	float* Inputs,
-	uint32_t PrevChannelCount,
-	uint32_t BatchSize,
-	conv_layer* ConvLayer,
-	uint32_t ThreadIndex,
-	uint32_t ThreadCount,
-	float* Output,
-	uint32_t OutputSize
-)
-{
-	assert(OutputSize == ConvOutputSize(ConvLayer));
+// void ConvForwardCore(
+// 	float* Inputs,
+// 	uint32_t PrevChannelCount,
+// 	uint32_t BatchSize,
+// 	conv_layer* ConvLayer,
+// 	uint32_t ThreadIndex,
+// 	uint32_t ThreadCount,
+// 	float* Output,
+// 	uint32_t OutputSize
+// )
+// {
+// 	assert(OutputSize == ConvOutputSize(ConvLayer));
 
-	uint32_t XBound = ConvLayer->InputWidth - ConvLayer->Pad;
-	uint32_t YBound = ConvLayer->InputHeight - ConvLayer->Pad;
+// 	uint32_t XBound = ConvLayer->InputWidth - ConvLayer->Pad;
+// 	uint32_t YBound = ConvLayer->InputHeight - ConvLayer->Pad;
 
-	// TODO: explore fancier algorithms that take advantage of cache locality
-	for(
-		uint32_t InputElementIndex = ThreadIndex;
-		InputElementIndex < OutputSize;
-		InputElementIndex += ThreadCount
-	)
-	{
-		// float* ResultElement = Output + ResultElementIndex;
-		// TODO: double check these x and y calculations
-		// uint32_t ChannelElementCount = (
-		// 	ConvLayer->OutputWidth * ConvLayer->OutputHeight
-		// );
-		// uint32_t ResultChannelIndex = ResultElementIndex / ChannelElementCount;
-		// uint32_t OffsetResultElementIndex = (
-		// 	ResultElementIndex % ChannelElementCount
-		// );
-		// uint32_t ResultY = OffsetResultElementIndex / ConvLayer->OutputWidth;
-		// uint32_t ResultX = OffsetResultElementIndex % ConvLayer->OutputWidth;
-		// for(
-		// 	uint32_t X = 0; X < ConvLayer->FilterDim; X++
-		// )
-		// {
-		// 	for(uint32_t Y = 0; Y < ConvLayer->FilterDim; Y++)
-		// 	{
-		// 		GetElementFromConv(
-		// 			Inputs, ResultChannelIndex, ResultX + X, ResultY + Y
-		// 		);
-		// 	}
-		// }
+// 	// TODO: explore fancier algorithms that take advantage of cache locality
+// 	for(
+// 		uint32_t InputElementIndex = ThreadIndex;
+// 		InputElementIndex < OutputSize;
+// 		InputElementIndex += ThreadCount
+// 	)
+// 	{
+// 		// float* ResultElement = Output + ResultElementIndex;
+// 		// TODO: double check these x and y calculations
+// 		// uint32_t ChannelElementCount = (
+// 		// 	ConvLayer->OutputWidth * ConvLayer->OutputHeight
+// 		// );
+// 		// uint32_t ResultChannelIndex = ResultElementIndex / ChannelElementCount;
+// 		// uint32_t OffsetResultElementIndex = (
+// 		// 	ResultElementIndex % ChannelElementCount
+// 		// );
+// 		// uint32_t ResultY = OffsetResultElementIndex / ConvLayer->OutputWidth;
+// 		// uint32_t ResultX = OffsetResultElementIndex % ConvLayer->OutputWidth;
+// 		// for(
+// 		// 	uint32_t X = 0; X < ConvLayer->FilterDim; X++
+// 		// )
+// 		// {
+// 		// 	for(uint32_t Y = 0; Y < ConvLayer->FilterDim; Y++)
+// 		// 	{
+// 		// 		GetElementFromConv(
+// 		// 			Inputs, ResultChannelIndex, ResultX + X, ResultY + Y
+// 		// 		);
+// 		// 	}
+// 		// }
 		
-		// TODO: need to include batch size in these calculations
-		uint32_t ChannelElementCount = (
-			ConvLayer->OutputWidth * ConvLayer->OutputHeight
-		);
-		uint32_t InputChannelIndex = InputElementIndex / ChannelElementCount;
-		uint32_t OffsetInputElementIndex = (
-			InputElementIndex % ChannelElementCount
-		);
-		uint32_t InputY = OffsetInputElementIndex / ConvLayer->OutputWidth;
-		uint32_t InputX = OffsetInputElementIndex % ConvLayer->OutputWidth;
-		if(InputX >= XBound || InputY >= YBound)
-		{
-			continue;
-		}
+// 		// TODO: need to include batch size in these calculations
+// 		uint32_t ChannelElementCount = (
+// 			ConvLayer->OutputWidth * ConvLayer->OutputHeight
+// 		);
+// 		uint32_t InputChannelIndex = InputElementIndex / ChannelElementCount;
+// 		uint32_t OffsetInputElementIndex = (
+// 			InputElementIndex % ChannelElementCount
+// 		);
+// 		uint32_t InputY = OffsetInputElementIndex / ConvLayer->OutputWidth;
+// 		uint32_t InputX = OffsetInputElementIndex % ConvLayer->OutputWidth;
+// 		if(InputX >= XBound || InputY >= YBound)
+// 		{
+// 			continue;
+// 		}
 
-		float Sum = 0.0f;
-		for(uint32_t X = 0; X < ConvLayer->FilterDim; X++)
-		{
-			for(uint32_t Y = 0; Y < ConvLayer->FilterDim; Y++)
-			{
-				float FilterElement = GetFilterElement(ConvLayer, OutputChannelIndex, X, Y);
-				float InputElement = GetChannelElement(
-					Inputs,
-					PrevChannelCount,
-					ConvLayer->InputWidth,
-					ConvLayer->InputHeight,
-					InputChannelIndex,
-					InputX + X,
-					InputY + Y
-				);
-				Sum += FilterElement * InputElement;
-			}
-		}
-	}
-}
+// 		float Sum = 0.0f;
+// 		for(uint32_t X = 0; X < ConvLayer->FilterDim; X++)
+// 		{
+// 			for(uint32_t Y = 0; Y < ConvLayer->FilterDim; Y++)
+// 			{
+// 				float FilterElement = GetFilterElement(ConvLayer, OutputChannelIndex, X, Y);
+// 				float InputElement = GetChannelElement(
+// 					Inputs,
+// 					PrevChannelCount,
+// 					ConvLayer->InputWidth,
+// 					ConvLayer->InputHeight,
+// 					InputChannelIndex,
+// 					InputX + X,
+// 					InputY + Y
+// 				);
+// 				Sum += FilterElement * InputElement;
+// 			}
+// 		}
+// 	}
+// }

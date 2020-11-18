@@ -2049,4 +2049,10 @@ int main(int argc, char* argv[])
 		}
 	}
 	// SECTION STOP: MNIST with Softmax + X Entropy
+
+	// SECTION START: test zero padding
+	{
+				
+	}
+	// SECTION STOP: test zero padding
 }
