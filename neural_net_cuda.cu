@@ -95,6 +95,10 @@ void CudaInitDeviceProperties(uint32_t Device)
 		&GlobalMaxGridDimArray[Device], cudaDevAttrMaxGridDimX, Device
 	);
 	GlobalMaxGridDimArray[Device] = 64;
+
+	int CacheSize = 0;
+	cudaDeviceGetAttribute(&CacheSize, cudaDevAttrL2CacheSize, Device);
+	printf("CacheSize %d\n", CacheSize);
 }
 
 uint32_t GetBlockSize(uint32_t Device)
