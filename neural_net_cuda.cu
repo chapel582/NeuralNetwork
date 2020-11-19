@@ -99,6 +99,12 @@ void CudaInitDeviceProperties(uint32_t Device)
 	int CacheSize = 0;
 	cudaDeviceGetAttribute(&CacheSize, cudaDevAttrL2CacheSize, Device);
 	printf("CacheSize %d\n", CacheSize);
+
+	int MaxSharedMemory = 0;
+	cudaDeviceGetAttribute(
+		&MaxSharedMemory, cudaDevAttrMaxSharedMemoryPerBlock, Device
+	);
+	printf("Max shared memory %d\n", MaxSharedMemory);
 }
 
 uint32_t GetBlockSize(uint32_t Device)
