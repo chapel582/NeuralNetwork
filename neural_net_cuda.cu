@@ -692,11 +692,12 @@ void SumArrayReduction(
 {
 	// NOTE: sums all elements in array, putting the result in Results[0]
 	// NOTE: assumes there is one element in the array per thread
-	for(uint32_t Step = 1; Step < NumThreads / 2; Step *= 2)
+
+	for(uint32_t Stride = NumThreads / 2; Stride > 0; Stride >>= 1)
 	{
-		if(ThreadIndex % (2 * Step) == 0)
+		if(ThreadIndex < Stride)
 		{
-			Results[ThreadIndex] += Results[ThreadIndex + Step];
+			Results[ThreadIndex] += Results[ThreadIndex + Stride];
 		}
 		__syncthreads();
 	}
