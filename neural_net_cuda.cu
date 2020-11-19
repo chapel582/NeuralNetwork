@@ -685,34 +685,42 @@ cudaError_t CudaReluBack(
 	return Error;
 }
 
+__device__ 
+void SumArrayReduction(
+	float* Results, uint32_t ThreadIndex, uint32_t NumThreads
+)
+{
+	// NOTE: sums all elements in array, putting the result in Results[0]
+	// NOTE: assumes there is one element in the array per thread
+	for(uint32_t Step = 1; Step < NumThreads / 2; Step *= 2)
+	{
+		if(ThreadIndex % (2 * Step) == 0)
+		{
+			Results[ThreadIndex] += Results[ThreadIndex + Step];
+		}
+		__syncthreads();
+	}
+}
+
 __device__
 void CudaMseForwardCore(
 	matrix* Predictions,
 	matrix* Labels,
 	float* GlobalResult,
 	float* Results,
-	uint32_t ThreadId,
+	uint32_t ThreadIndex,
 	uint32_t NumThreads
 )
 {
-	Results[ThreadId] = 0.0f;
-	Results[ThreadId] = MseForwardCore(
-		Predictions, Labels, ThreadId, NumThreads
+	Results[ThreadIndex] = 0.0f;
+	Results[ThreadIndex] = MseForwardCore(
+		Predictions, Labels, ThreadIndex, NumThreads
 	);
-
 	__syncthreads();
 	
-	for(uint32_t Step = 1; Step < NumThreads / 2; Step *= 2)
-	{
-		if(ThreadId % (2 * Step) == 0)
-		{
-			Results[ThreadId] += Results[ThreadId + Step];
-		}
-		__syncthreads();
-	}
-
+	SumArrayReduction(Results, ThreadIndex, NumThreads);
 	// NOTE: only branch divergence happens at the end
-	if(ThreadId == 0)
+	if(ThreadIndex == 0)
 	{
 		*GlobalResult = Results[0] / (2.0f * Predictions->NumRows);
 	}
@@ -854,24 +862,20 @@ void CudaXentropyForwardCore(
 	matrix* Labels,
 	float* GlobalResult,
 	float* Results,
-	uint32_t Start,
-	uint32_t Stride
+	uint32_t ThreadIndex,
+	uint32_t NumThreads
 )
 {
-	Results[Start] = 0.0f;
-	Results[Start] = XentropyForwardCore(Predictions, Labels, Start, Stride);
+	Results[ThreadIndex] = 0.0f;
+	Results[ThreadIndex] = XentropyForwardCore(
+		Predictions, Labels, ThreadIndex, NumThreads
+	);
+	__syncthreads();
 
-	// NOTE: single-threaded summation
-	// TODO: could try a divide-and conquer algorithm for fast summation
-	if(Start == 0)
+	SumArrayReduction(Results, ThreadIndex, NumThreads);
+	if(ThreadIndex == 0)
 	{
-		float Result = 0.0f;
-		for(int Index = 0; Index < Stride; Index++)
-		{
-			Result += Results[Index];
-		}
-
-		*GlobalResult = Result;
+		*GlobalResult = Results[0];
 	}
 }
 
