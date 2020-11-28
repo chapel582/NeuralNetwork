@@ -1475,9 +1475,9 @@ int main(int argc, char* argv[])
 	printf("Starting MNIST training. This may take a 2-4 minutes...\n");
 	{
 		uint32_t MiniBatchSize = 32;
-		uint32_t TrainingSamples = 2048;
+		uint32_t TrainingSamples = 54000;
 		uint32_t TestSamples = 100;
-		uint32_t Epochs = 30;
+		uint32_t Epochs = 5;
 		float TrainingAccuracyThreshold = 0.99f;
 		float LossThreshold = -0.00001f;
 		float LearningRate = 0.1f;
@@ -1632,7 +1632,7 @@ int main(int argc, char* argv[])
 		}
 	}
 	// SECTION STOP: MNIST with MSE
-
+/*
 	// SECTION START: MNIST with softmax + xentropy
 	printf("Starting MNIST training with softmax and x-entropy. This may take a 2-4 minutes...\n");
 	{
@@ -1794,7 +1794,7 @@ int main(int argc, char* argv[])
 			printf("Unable to run mnist test\n");
 		}
 	}
-	// SECTION STOP: MNIST with MSE
-
+	// SECTION STOP: MNIST with softmax + X-entropy
+*/
 	return 0;
 }

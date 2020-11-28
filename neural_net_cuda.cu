@@ -82,6 +82,7 @@ void CudaAllocMatrixMeanResult(matrix** Result, matrix* M1)
 #define MAX_GPUS 1
 int GlobalMaxBlockSizeArray[MAX_GPUS];
 int GlobalMaxGridDimArray[MAX_GPUS];
+int GlobalMaxSharedMemeory;
 
 void CudaInitDeviceProperties(uint32_t Device)
 {
@@ -100,11 +101,9 @@ void CudaInitDeviceProperties(uint32_t Device)
 	cudaDeviceGetAttribute(&CacheSize, cudaDevAttrL2CacheSize, Device);
 	printf("CacheSize %d\n", CacheSize);
 
-	int MaxSharedMemory = 0;
 	cudaDeviceGetAttribute(
-		&MaxSharedMemory, cudaDevAttrMaxSharedMemoryPerBlock, Device
+		&GlobalMaxSharedMemory, cudaDevAttrMaxSharedMemoryPerBlock, Device
 	);
-	printf("Max shared memory %d\n", MaxSharedMemory);
 }
 
 uint32_t GetBlockSize(uint32_t Device)
@@ -134,6 +133,167 @@ uint32_t GetNumBlocks(uint32_t Range, uint32_t BlockSize, uint32_t Device)
 	return NumBlocks;
 }
 
+void GetAllFactors(
+	uint32_t Value, uint32_t** FactorsResult, uint32_t* FactorCountResults
+)
+{
+	uint32_t* Factors = (uint32_t*) malloc(Value * sizeof(uint32_t));
+	uint32_t FactorCount = 0;
+	Factors[FactorCount++] = 1;
+	Factors[FactorCount++] = Value;
+	uint32_t UpperBound = Value / 2;
+	for(uint32_t Factor = 2; Factor < UpperBound; Factor++)
+	{
+		if(Value % Factor == 0)
+		{
+			UpperBound = Value / Factor;
+			Factors[FactorCount++] = Factor;
+		}
+	}
+
+	*FactorsResult = Factors;
+	*FactorCountResult = FactorCount;
+}
+
+void GetCommonFactors(
+	uint32_t Value1,
+	uint32_t Value2,
+	uint32_t** FactorsResult,
+	uint32_t* FactorCountResults
+)
+{
+	uint32_t LesserValue;
+	if(Value1 < Value2)
+	{
+		LesserValue = Value1;
+	}
+	else if(Value2 < Value1)
+	{
+		LesserValue = Value2;
+	}
+	else
+	{
+		GetAllFactors(Value1, FactorResult, FactorCountResults);
+		return;
+	}
+
+	uint32_t* Factors = (uint32_t*) malloc(LesserValue * sizeof(uint32_t));
+	uint32_t FactorCount = 0;
+	Factors[FactorCount++] = 1;
+	Factors[FactorCount++] = LesserValue;
+	uint32_t UpperBound = LesserValue / 2;
+	for(uint32_t Factor = 2; Factor < UpperBound; Factor++)
+	{
+		if(Value1 % Factor == 0 && Value2 % Factor == 0)
+		{
+			UpperBound = LesserValue / Factor;
+			Factors[FactorCount++] = Factor;
+		}
+	}
+
+	*FactorsResult = Factors;
+	*FactorCountResult = FactorCount;
+}
+
+void GetBlockDimensions(
+	uint32_t MemorySize,
+	matrix* M1,
+	matrix* M2,
+	uint32_t* M1RowPartitionCountResult,
+	uint32_t* M1M2PartitionCommonResult,
+	uint32_t* M2ColPartitionCountResult
+)
+{
+	// NOTE: this does a malloc so don't use it in any core loops
+
+	/* NOTE: on constraints for this problem
+	need M1RowPartitionCount to be a factor of M1->NumRows
+	need M2ColPartitionCount to be a factor of M2->NumCols
+	need M1M2PartitionCommon to be a factor of M1->NumCols and M2->NumRows
+
+	the following constraints are for fitting in memory.
+	the terms described below should sum to less than MemorySize
+	For the result of the "dot product" 
+	M1RowPartitionCount * M2ColPartitionCount
+	For all elements used in the dot product 
+	M1M2PartitionCommon * (
+		M1M2PartitionCommon * M1RowPartitionCount + 
+		M1M2PartitionCommon *  M2ColPartitionCount
+	)
+	which is equivalent to 	
+	(M1M2PartitionCommon ** 2) * (M1RowPartitionCount + M2ColPartitionCount)
+	*/
+
+	// TODO: handle case where there doesn't exist a partition that will 
+	// CONT: satisfy all conditions
+
+	// NOTE: find all factors of of M1->NumRows
+	uint32_t* M1Factors = NULL;
+	uint32_t M1FactorCount = 0;
+	GetAllFactors(M1->NumRows, &M1Factors, &M1FactorCount);
+
+	// NOTE: find all factors of of M2->NumCols
+	uint32_t* M2Factors = NULL;
+	uint32_t M2FactorCount = 0;
+	GetAllFactors(M2->NumCols, &M2Factors, &M2FactorCount);
+
+	// NOTE: find all factors of of M1->NumCols AND M2->NumRows
+	uint32_t* M1M2CommonFactors = NULL;
+	uint32_t M1M2FactorCount = 0;
+	GetCommonFactors(M1->NumCols, M2->NumRows, &M1M2Factors, &M1M2FactorCount);
+
+	uint32_t MaxMemoryUsed = 0;
+	uint32_t M1RowPartitionCount = 0;
+	uint32_t M1M2PartitionCommon = 0;
+	uint32_t M2ColPartitionCount = 0;
+
+	for(
+		uint32_t M1FactorIndex = 0;
+		M1FactorIndex < M1FactorCount;
+		M1FactorIndex++
+	)
+	{
+		uint32_t M1Factor = M1Factors[M1FactorIndex];
+		for(
+			uint32_t M2FactorIndex = 0;
+			M2FactorIndex < M2FactorCount;
+			M2FactorIndex++
+		)
+		{
+			uint32_t M2Factor = M2Factors[M2FactorIndex];
+			for(
+				uint32_t M1M2FactorIndex = 0;
+				M1M2FactorIndex < M1M2FactorCount;
+				M1M2FactorIndex++
+			)
+			{
+				uint32_t M1M2Factor = M1M2Factors[M1M2FactorIndex];
+				uint32_t MemoryUsed = (
+					(M1RowPartitionCount * M2ColPartitionCount) + 
+					(M1M2PartitionCommon * M1M2PartitionCommon) * 
+					(M1RowPartitionCount + M2ColPartitionCount)
+				)
+				if(MemoryUsed < MemorySize && MemoryUsed > MaxMemoryUsed)
+				{
+					M1RowPartitionCount = M1Factor;
+					M1M2PartitionCommon = M1M2Factor;
+					M2ColPartitionCount = M2Factor;
+
+					MaxMemoryUsed = MemoryUsed;
+				}
+			}
+		}
+	}
+
+	*M1RowPartitionCountResult = M1RowPartitionCount;
+	*M1M2PartitionCommonResult = M1M2PartitionCommon;
+	*M2ColPartitionCountResult = M2ColPartitionCount;
+
+	free(M1Factors);
+	free(M2Factors);
+	free(M1M2CommonFactors);
+}
+
 __global__
 void CudaMatrixMultThread(matrix* M1, matrix* M2, matrix* Result)
 {	
@@ -152,6 +312,42 @@ cudaError_t CudaMatrixMult(matrix* M1, matrix* M2, matrix* Result)
 		GetMatrixArrayCount(Result), BlockSize, Device
 	);
 	CudaMatrixMultThread<<<NumBlocks, BlockSize>>>(M1, M2, Result);
+	cudaError_t Error = cudaDeviceSynchronize();
+	assert(Error == cudaSuccess);
+	return Error;
+}
+
+__global__
+void CudaLargeMatrixMultThread(matrix* M1, matrix* M2, matrix* Result)
+{
+
+}
+
+cudaError_t CudaLargeMatrixMult(
+	matrix* M1,
+	matrix* M2,
+	matrix* Result,
+	block_dimensions* BlockDimensions = NULL
+)
+{
+	assert(M1->NumColumns == M2->NumRows);
+
+	uint32_t Device = 0;
+	int BlockSize = GetBlockSize(Device);
+	int NumBlocks = GetMaxNumBlocks(Device);
+	size_t MemorySize = GlobalMaxSharedMemeory;
+	
+	// NOTE: see if we need to compute the block matrix dimensions
+	if(
+		M1RowPartitionCount == 0 || 
+		M1M2PartitionCommon == 0 || 
+		M2ColPartitionCount == 0)
+	{
+		GetBlockDimensions(MemorySize, M1, M2);
+	}
+
+	assert();
+	CudaMatrixMultThread<<<NumBlocks, BlockSize, MemorySize>>>(M1, M2, Result);
 	cudaError_t Error = cudaDeviceSynchronize();
 	assert(Error == cudaSuccess);
 	return Error;
@@ -1859,33 +2055,33 @@ void CudaTrainNeuralNetMiniBatch(
 			);
 		}
 
-		float Loss = -1.0f;
-		CudaNeuralNetForward(
-			FullBatchNnViewer,
-			Inputs,
-			Labels,
-			NULL,
-			&Loss
-		);
-		float TrainingAccuracy = CudaTopOneAccuracy(
-			FullBatchNnViewer, Inputs, Labels
-		);
-		if(PrintStatus)
-		{
-			printf(
-				"Epoch %d Loss, Accuracy: %f, %f\n",
-				Epoch,
-				Loss,
-				TrainingAccuracy
-			);
-		}
-		if(
-			TrainingAccuracy >= TrainingAccuracyThreshold ||
-			Loss <= LossThreshold
-		)
-		{
-			break;
-		}
+		// float Loss = -1.0f;
+		// CudaNeuralNetForward(
+		// 	FullBatchNnViewer,
+		// 	Inputs,
+		// 	Labels,
+		// 	NULL,
+		// 	&Loss
+		// );
+		// float TrainingAccuracy = CudaTopOneAccuracy(
+		// 	FullBatchNnViewer, Inputs, Labels
+		// );
+		// if(PrintStatus)
+		// {
+		// 	printf(
+		// 		"Epoch %d Loss, Accuracy: %f, %f\n",
+		// 		Epoch,
+		// 		Loss,
+		// 		TrainingAccuracy
+		// 	);
+		// }
+		// if(
+		// 	TrainingAccuracy >= TrainingAccuracyThreshold ||
+		// 	Loss <= LossThreshold
+		// )
+		// {
+		// 	break;
+		// }
 	}
 
 	CudaFreeIntShuffler(IntShuffler);
