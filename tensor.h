@@ -60,7 +60,7 @@ void PrintTensor(float_tensor* Tensor)
 	}
 	printf("\n");
 }
-// tensor<> TransposeView();
+
 // TODO: TransposeCopy
 
 #define TENSOR_H

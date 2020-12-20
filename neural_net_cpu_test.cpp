@@ -190,26 +190,38 @@ int main(int argc, char* argv[])
 		printf("First 2d tensor\n");
 		PrintTensor(&TwoDFirst);
 
-		uint32_t GetOneD[2] = {1, 1};
+		uint32_t GetOneD[2] = {1, 2};
 		float_tensor OneDTensor = GetTensor(ThreeDTensor, GetOneD, 2);
 		printf("One-dimensional tensor\n");
 		PrintTensor(&OneDTensor);
 
-		uint32_t GetElementIndices[3] = {1, 1, 1};
+		uint32_t GetElementIndices[3] = {1, 2, 3};
 		float_tensor ZeroD = GetTensor(ThreeDTensor, GetElementIndices, 3);
 		printf("Zero-dimensional tensor\n");
 		PrintTensor(&ZeroD);
 
-		uint32_t ZeroDFromOneDIndex = 1;
+		uint32_t ZeroDFromOneDIndex = 3;
 		float_tensor ZeroDFromOneD = GetTensor(
 			&OneDTensor, &ZeroDFromOneDIndex, 1
 		);
 		printf("Zero-dimensional tensor from one-dimensional tensor\n");
 		PrintTensor(&ZeroDFromOneD);
 
-		float ZeroDElement = GetElement(ThreeDTensor, GetElementIndices, 3);
+		float Scalar = GetElement(ThreeDTensor, GetElementIndices, 3);
 		printf("Scalar from 3d tensor\n");
-		printf("%f", ZeroDElement);
+		printf("%f\n", Scalar);
+
+		float_tensor Transposed3d = TransposeView(ThreeDTensor, 0, 1);
+		printf("Transposed 3d tensor\n");
+		PrintTensor(&Transposed3d);
+
+		float ScalarFromTranspose = GetElement(
+			&Transposed3d, GetElementIndices, 3
+		);
+		printf("Scalar from transposed 3d tensor\n");
+		printf("%f\n", ScalarFromTranspose);
+
+
 		// TODO: test free
 	}
 

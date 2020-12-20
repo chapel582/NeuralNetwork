@@ -90,6 +90,35 @@ float GetElement(
 
 	return *Data;
 }
+
+float_tensor TransposeView(float_tensor* Tensor, uint32_t Dim1, uint32_t Dim2)
+{
+	assert(Tensor->DimCount >= 2);
+	assert(Dim1 < Tensor->DimCount);
+	assert(Dim2 < Tensor->DimCount);
+
+	float_tensor Result = {};
+	Result.DimCount = Tensor->DimCount;
+	AllocTensorFields(&Result);
+	
+	memcpy(
+		Result.Shape, Tensor->Shape, Result.DimCount * sizeof(uint32_t)
+	);
+	uint32_t TempShape = Result.Shape[Dim1];
+	Result.Shape[Dim1] = Result.Shape[Dim2];
+	Result.Shape[Dim2] = TempShape;
+
+	memcpy(
+		Result.Strides,	Tensor->Strides, Result.DimCount * sizeof(uint32_t)
+	);
+	uint32_t TempStride = Result.Strides[Dim1];
+	Result.Strides[Dim1] = Result.Strides[Dim2];
+	Result.Strides[Dim2] = TempStride;
+
+	Result.Data = Tensor->Data;
+
+	return Result;
+}
 // TODO: Copy
 // TODO: GetElement
 // TODO: GetCopy
