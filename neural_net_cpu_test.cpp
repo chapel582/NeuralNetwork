@@ -165,8 +165,8 @@ int main(int argc, char* argv[])
 		printf("Second element of last dimension\n");
 		PrintTensor(&Slice1);
 
-		uint32_t GetElement[2] = {1, 1};
-		float_tensor Slice2 = GetTensor(Tensor, GetElement, 2);
+		uint32_t GetElementIndices[2] = {1, 1};
+		float_tensor Slice2 = GetTensor(Tensor, GetElementIndices, 2);
 		printf("Zero-dimensional tensor\n");
 		PrintTensor(&Slice2);
 		// TODO: test free
@@ -195,8 +195,8 @@ int main(int argc, char* argv[])
 		printf("One-dimensional tensor\n");
 		PrintTensor(&OneDTensor);
 
-		uint32_t GetElement[3] = {1, 1, 1};
-		float_tensor ZeroD = GetTensor(ThreeDTensor, GetElement, 3);
+		uint32_t GetElementIndices[3] = {1, 1, 1};
+		float_tensor ZeroD = GetTensor(ThreeDTensor, GetElementIndices, 3);
 		printf("Zero-dimensional tensor\n");
 		PrintTensor(&ZeroD);
 
@@ -207,6 +207,9 @@ int main(int argc, char* argv[])
 		printf("Zero-dimensional tensor from one-dimensional tensor\n");
 		PrintTensor(&ZeroDFromOneD);
 
+		float ZeroDElement = GetElement(&ThreeDTensor, GetElementIndices, 3);
+		printf("Scalar from 3d tensor\n");
+		printf("%f", ZeroDElement);
 		// TODO: test free
 	}
 

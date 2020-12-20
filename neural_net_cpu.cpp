@@ -76,6 +76,20 @@ float_tensor GetTensor(
 
 	return Result;
 }
+
+float GetElement(
+	float_tensor* Tensor, uint32_t* Indices, uint32_t IndexCount
+)
+{
+	assert(IndexCount <= Tensor->DimCount);
+	float* Data = Tensor->Data;
+	for(uint32_t CurrentDim = 0; CurrentDim < IndexCount; CurrentDim++)
+	{
+		Data += Indices[CurrentDim] * Tensor->Strides[CurrentDim];
+	}
+
+	return *Data;
+}
 // TODO: Copy
 // TODO: GetElement
 // TODO: GetCopy
