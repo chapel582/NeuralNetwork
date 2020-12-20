@@ -154,7 +154,7 @@ int main(int argc, char* argv[])
 		FillConsecutive(Tensor);
 		printf("Full consecutive tensor\n");
 		PrintTensor(Tensor);
-		
+
 		uint32_t ZeroIndex = 0;
 		float_tensor Slice0 = GetTensor(Tensor, &ZeroIndex, 1);
 		printf("First element of last dimension\n");
@@ -169,6 +169,38 @@ int main(int argc, char* argv[])
 		float_tensor Slice2 = GetTensor(Tensor, GetElement, 2);
 		printf("Zero-dimensional tensor\n");
 		PrintTensor(&Slice2);
+		// TODO: test free
+	}
+
+	{
+		float_tensor* ThreeDTensor = NULL;
+		uint32_t Shape[3] = {3, 4, 5};
+		AllocAndInitTensor(&ThreeDTensor, 3, Shape);
+		FillConsecutive(ThreeDTensor);
+		printf("Full consecutive 3D tensor\n");
+		PrintTensor(ThreeDTensor);
+		
+		uint32_t ZeroIndex = 0;
+		float_tensor Slice0 = GetTensor(ThreeDTensor, &ZeroIndex, 1);
+		printf("Zeroth 2D tensor\n");
+		PrintTensor(&Slice0);
+		
+		uint32_t OneIndex = 1;
+		float_tensor Slice1 = GetTensor(ThreeDTensor, &OneIndex, 1);
+		printf("First 2d tensor\n");
+		PrintTensor(&Slice1);
+
+		uint32_t GetOneD[2] = {1, 1};
+		float_tensor Slice2 = GetTensor(ThreeDTensor, GetOneD, 2);
+		printf("One-dimensional tensor\n");
+		PrintTensor(&Slice2);
+
+		uint32_t GetElement[3] = {1, 1, 1};
+		float_tensor Slice3 = GetTensor(ThreeDTensor, GetElement, 3);
+		printf("Zero-dimensional tensor\n");
+		PrintTensor(&Slice3);
+
+		// TODO: test free
 	}
 
 	// // SECTION START: Matrix tests
