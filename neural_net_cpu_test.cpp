@@ -207,7 +207,7 @@ int main(int argc, char* argv[])
 		printf("Zero-dimensional tensor from one-dimensional tensor\n");
 		PrintTensor(&ZeroDFromOneD);
 
-		float ZeroDElement = GetElement(&ThreeDTensor, GetElementIndices, 3);
+		float ZeroDElement = GetElement(ThreeDTensor, GetElementIndices, 3);
 		printf("Scalar from 3d tensor\n");
 		printf("%f", ZeroDElement);
 		// TODO: test free
