@@ -152,15 +152,22 @@ int main(int argc, char* argv[])
 		uint32_t Shape[2] = {3, 3};
 		AllocAndInitTensor(&Tensor, 2, Shape);
 		FillConsecutive(Tensor);
+		printf("Full consecutive tensor\n");
 		PrintTensor(Tensor);
+		
 		uint32_t ZeroIndex = 0;
 		float_tensor Slice0 = GetTensor(Tensor, &ZeroIndex, 1);
+		printf("First element of last dimension\n");
+		PrintTensor(&Slice0);
+		
 		uint32_t OneIndex = 1;
 		float_tensor Slice1 = GetTensor(Tensor, &OneIndex, 1);
+		printf("Second element of last dimension\n");
+		PrintTensor(&Slice1);
+
 		uint32_t GetElement[2] = {1, 1};
 		float_tensor Slice2 = GetTensor(Tensor, GetElement, 2);
-		PrintTensor(&Slice0);
-		PrintTensor(&Slice1);
+		printf("Zero-dimensional tensor\n");
 		PrintTensor(&Slice2);
 	}
 

@@ -31,21 +31,32 @@ inline uint32_t GetTotalElements(float_tensor* Tensor)
 void PrintTensor(float_tensor* Tensor)
 {
 	// NOTE: our print tensor just prints the last dimension as a 1d array
-	uint32_t TotalElements = GetTotalElements(Tensor);
-	uint32_t Stride = Tensor->Strides[Tensor->DimCount - 1];
-	for(
-		uint32_t ElementIndex = 0;
-		ElementIndex < TotalElements;
-		ElementIndex++
-	)
+	if(Tensor->DimCount > 0)
 	{
-		uint32_t DataIndex = ElementIndex * Stride;
-		printf("%f, ", Tensor->Data[DataIndex]);
-		if(ElementIndex % Tensor->Shape[Tensor->DimCount - 1] == 0)
+		uint32_t TotalElements = GetTotalElements(Tensor);
+		uint32_t Stride = Tensor->Strides[Tensor->DimCount - 1];
+		for(
+			uint32_t ElementIndex = 0;
+			ElementIndex < TotalElements;
+			ElementIndex++
+		)
 		{
-			printf("\n");
+			uint32_t DataIndex = ElementIndex * Stride;
+			printf("%f, ", Tensor->Data[DataIndex]);
+			if(
+				(ElementIndex % Tensor->Shape[Tensor->DimCount - 1]) == 
+				(Tensor->Shape[Tensor->DimCount - 1] - 1)
+			)
+			{
+				printf("\n");
+			}
 		}
 	}
+	else
+	{
+		printf("%f", Tensor->Data[0]);
+	}
+	printf("\n");
 }
 // tensor<> TransposeView();
 // TODO: TransposeCopy
