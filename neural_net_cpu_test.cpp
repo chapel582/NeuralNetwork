@@ -165,10 +165,17 @@ int main(int argc, char* argv[])
 		printf("Second element of last dimension\n");
 		PrintTensor(&Slice1);
 
-		uint32_t GetElementIndices[2] = {1, 1};
+		uint32_t GetElementIndices[2] = {1, 2};
 		float_tensor Slice2 = GetTensor(Tensor, GetElementIndices, 2);
 		printf("Zero-dimensional tensor\n");
 		PrintTensor(&Slice2);
+
+		float_tensor Transposed2d = TransposeView(Tensor, 0, 1);
+		float ScalarFromTranspose = GetElement(
+			&Transposed2d, GetElementIndices, 2
+		);
+		printf("Scalar from transposed 2d tensor\n");
+		printf("%f\n", ScalarFromTranspose);
 		// TODO: test free
 	}
 
@@ -220,8 +227,6 @@ int main(int argc, char* argv[])
 		);
 		printf("Scalar from transposed 3d tensor\n");
 		printf("%f\n", ScalarFromTranspose);
-
-
 		// TODO: test free
 	}
 
