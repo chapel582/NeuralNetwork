@@ -37,7 +37,7 @@ void PrintTensor(float_tensor* Tensor)
 		uint32_t Stride = Tensor->Strides[Tensor->DimCount - 1];
 		for(
 			uint32_t ElementIndex = 0;
-			ElementIndex < TotalElements;
+			ElementIndex < (TotalElements - 1);
 			ElementIndex++
 		)
 		{
@@ -51,6 +51,8 @@ void PrintTensor(float_tensor* Tensor)
 				printf("\n");
 			}
 		}
+		uint32_t DataIndex = (TotalElements - 1) * Stride;
+		printf("%f", Tensor->Data[DataIndex]);
 	}
 	else
 	{
