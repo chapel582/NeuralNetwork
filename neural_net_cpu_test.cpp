@@ -181,24 +181,31 @@ int main(int argc, char* argv[])
 		PrintTensor(ThreeDTensor);
 		
 		uint32_t ZeroIndex = 0;
-		float_tensor Slice0 = GetTensor(ThreeDTensor, &ZeroIndex, 1);
+		float_tensor TwoDZeroth = GetTensor(ThreeDTensor, &ZeroIndex, 1);
 		printf("Zeroth 2D tensor\n");
-		PrintTensor(&Slice0);
+		PrintTensor(&TwoDZeroth);
 		
 		uint32_t OneIndex = 1;
-		float_tensor Slice1 = GetTensor(ThreeDTensor, &OneIndex, 1);
+		float_tensor TwoDFirst = GetTensor(ThreeDTensor, &OneIndex, 1);
 		printf("First 2d tensor\n");
-		PrintTensor(&Slice1);
+		PrintTensor(&TwoDFirst);
 
 		uint32_t GetOneD[2] = {1, 1};
-		float_tensor Slice2 = GetTensor(ThreeDTensor, GetOneD, 2);
+		float_tensor OneDTensor = GetTensor(ThreeDTensor, GetOneD, 2);
 		printf("One-dimensional tensor\n");
-		PrintTensor(&Slice2);
+		PrintTensor(&OneDTensor);
 
 		uint32_t GetElement[3] = {1, 1, 1};
-		float_tensor Slice3 = GetTensor(ThreeDTensor, GetElement, 3);
+		float_tensor ZeroD = GetTensor(ThreeDTensor, GetElement, 3);
 		printf("Zero-dimensional tensor\n");
-		PrintTensor(&Slice3);
+		PrintTensor(&ZeroD);
+
+		uint32_t ZeroDFromOneDIndex = 1;
+		float_tensor ZeroDFromOneD = GetTensor(
+			&OneDTensor, &ZeroDFromOneDIndex, 1
+		);
+		printf("Zero-dimensional tensor from one-dimensional tensor\n");
+		PrintTensor(&ZeroDFromOneD);
 
 		// TODO: test free
 	}
