@@ -1,5 +1,6 @@
 #include "neural_net.h"
 
+#include "tensor.h"
 #include "matrix.h"
 
 #include "int_shuffler.h"
@@ -12,6 +13,74 @@
 
 // TODO: Need to have a platform independent way of handling threads
 #include <windows.h>
+
+void AllocTensorFields(float_tensor* Tensor)
+{
+	Tensor->Strides = (uint32_t*) malloc(Tensor->DimCount * sizeof(uint32_t));
+	memset(Tensor->Strides, 0, sizeof(uint32_t));
+	Tensor->Shape = (uint32_t*) malloc(Tensor->DimCount * sizeof(uint32_t));
+	memset(Tensor->Shape, 0, sizeof(uint32_t));
+}
+
+void AllocAndInitTensor(
+	float_tensor** Result, uint32_t DimCount, uint32_t* Shape
+)
+{
+	float_tensor* Tensor = (float_tensor*) malloc(sizeof(float_tensor));
+	Tensor->DimCount = DimCount;
+	AllocTensorFields(Tensor);
+	
+	memcpy(Tensor->Shape, Shape, Tensor->DimCount * sizeof(uint32_t));
+
+	Tensor->Strides[Tensor->DimCount - 1] = 1;
+	for(int32_t Index = Tensor->DimCount - 2; Index >= 0; Index--)
+	{
+		Tensor->Strides[Index] = (
+			Tensor->Strides[Index + 1] * Tensor->Shape[Index + 1]
+		);
+	}
+
+	uint32_t TotalElements = GetTotalElements(Tensor);
+	Tensor->Data = (float*) malloc(TotalElements * sizeof(float));
+	*Result = Tensor;
+}
+
+float_tensor GetTensor(
+	float_tensor* Tensor, uint32_t* Indices, uint32_t IndexCount
+)
+{
+	assert(IndexCount <= Tensor->DimCount);
+	float_tensor Result = {};
+	Result.DimCount = Tensor->DimCount - IndexCount;
+	if(Result.DimCount > 0)
+	{
+		AllocTensorFields(&Result);
+		memcpy(
+			Result.Shape,
+			Tensor->Shape + IndexCount,
+			Result.DimCount * sizeof(uint32_t)
+		);
+		memcpy(
+			Result.Strides,
+			Tensor->Strides + IndexCount,
+			Result.DimCount * sizeof(uint32_t)
+		);
+	}
+
+	Result.Data = Tensor->Data;
+	for(uint32_t CurrentDim = 0; CurrentDim < IndexCount; CurrentDim++)
+	{
+		assert(Indices[CurrentDim] < Tensor->Shape[CurrentDim]);
+		Result.Data += Indices[CurrentDim] * Tensor->Strides[CurrentDim];
+	}
+
+	return Result;
+}
+// TODO: Copy
+// TODO: GetElement
+// TODO: GetCopy
+// TODO: transpose
+// TODO: Slicing a larger tensor down
 
 void InitMatrix(matrix* Matrix, uint32_t NumRows, uint32_t NumColumns)
 {
