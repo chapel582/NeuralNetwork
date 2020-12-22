@@ -1,6 +1,9 @@
 #ifndef NEURAL_NET_COMMON_H
+
+#include <stdlib.h>
 #include <stdint.h>
 #include <math.h>
+#include <stdio.h>
 
 #define ARRAY_COUNT(Array) (sizeof(Array) / sizeof(Array[0]))
 #define ASSERT(Expression) if(!(Expression)) {*(int*) 0 = 0;}
@@ -66,12 +69,6 @@ void PrintVectorArray(vector_array VectorArray)
 
 typedef vector_array weights;
 
-struct dense_layer
-{
-	weights* Weights;
-	vector* Biases;
-};
-
 void FloatCopy(float* Destination, float* Source, uint64_t Length)
 {
 	float* OnePastFinalFloat = Destination + Length;
@@ -91,24 +88,6 @@ void FloatSet(float* Destination, float Value, uint64_t Length)
 		*Destination = Value;
 		Destination++;
 	}
-}
-
-int ArgMax(float* Array, uint64_t ArrayLength)
-{
-	ASSERT(Array != NULL);
-	ASSERT(ArrayLength > 0);
-	int Index = 0;
-	int Result = Index;
-	float Highest = Array[Index];
-	for(Index = 1; Index < ArrayLength; Index++)
-	{
-		if(Array[Index] > Highest)
-		{
-			Highest = Array[Index];
-			Result = Index;
-		}
-	}
-	return Result;
 }
 
 #define PI32 3.14159
@@ -169,27 +148,6 @@ void InitSpiralData(
 			Theta += ThetaIncrement;
 			Radius += RadiusIncrement;
 		}
-	}
-}
-
-void InitDenseLayer(dense_layer* DenseLayer)
-{
-	weights* Weights = DenseLayer->Weights;
-	float* WeightArray = Weights->Vectors;
-	for(
-		int Index = 0; Index < (Weights->Length * Weights->VectorLength); Index++
-	)
-	{
-		WeightArray[Index] = RandFloatRange(-1, 2);
-	}
-
-	// NOTE: we initialize Biases->Data to be slightly greater 
-	// CONT: than zero by default to avoid dead networks
-	vector* Biases = DenseLayer->Biases;
-	float* BiasArray = Biases->Data;
-	for(int Index = 0; Index < Biases->Length; Index++)
-	{
-		BiasArray[Index] = 0.01f;
 	}
 }
 

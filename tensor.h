@@ -28,36 +28,81 @@ inline uint32_t GetTotalElements(float_tensor* Tensor)
 	return TotalElements;
 }
 
+float GetElement(
+	float_tensor* Tensor, uint32_t* Indices, uint32_t IndexCount
+)
+{
+	assert(IndexCount <= Tensor->DimCount);
+	float* Data = Tensor->Data;
+	for(uint32_t CurrentDim = 0; CurrentDim < IndexCount; CurrentDim++)
+	{
+		assert(Indices[CurrentDim] < Tensor->Shape[CurrentDim]);
+		Data += Indices[CurrentDim] * Tensor->Strides[CurrentDim];
+	}
+
+	return *Data;
+}
+
+float GetElement(float_tensor* Tensor, ...)
+{
+	va_list VarArgs;
+	va_start(VarArgs, Tensor);
+
+	float* Data = Tensor->Data;
+	for(uint32_t CurrentDim = 0; CurrentDim < Tensor->DimCount; CurrentDim++)
+	{
+		uint32_t Index = va_arg(VarArgs, uint32_t);
+		Data += Index * Tensor->Strides[CurrentDim];
+	}
+
+	va_end(VarArgs);
+
+	return *Data;
+}
+
 void PrintTensor(float_tensor* Tensor)
 {
 	// NOTE: our print tensor just prints the last dimension as a 1d array
+	
 	if(Tensor->DimCount > 0)
 	{
 		uint32_t TotalElements = GetTotalElements(Tensor);
-		uint32_t Stride = Tensor->Strides[Tensor->DimCount - 1];
 		for(
 			uint32_t ElementIndex = 0;
-			ElementIndex < (TotalElements - 1);
+			ElementIndex < TotalElements;
 			ElementIndex++
 		)
 		{
-			uint32_t DataIndex = ElementIndex * Stride;
-			printf("%f, ", Tensor->Data[DataIndex]);
+			float* Data = Tensor->Data;
+			uint32_t ElementsInDimension = 1;
+			for(
+				int32_t CurrentDim = Tensor->DimCount - 1;
+				CurrentDim >= 0;
+				CurrentDim--
+			)
+			{
+				uint32_t DimIndex = (
+					(ElementIndex / ElementsInDimension) %
+					Tensor->Shape[CurrentDim]
+				);
+				Data += DimIndex * Tensor->Strides[CurrentDim];
+				ElementsInDimension *= Tensor->Shape[CurrentDim];
+			}
+			printf("%f, ", *Data);
 			if(
-				(ElementIndex % Tensor->Shape[Tensor->DimCount - 1]) == 
+				ElementIndex % Tensor->Shape[Tensor->DimCount - 1] == 
 				(Tensor->Shape[Tensor->DimCount - 1] - 1)
 			)
 			{
 				printf("\n");
 			}
 		}
-		uint32_t DataIndex = (TotalElements - 1) * Stride;
-		printf("%f", Tensor->Data[DataIndex]);
 	}
 	else
 	{
 		printf("%f", Tensor->Data[0]);
 	}
+
 	printf("\n");
 }
 

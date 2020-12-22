@@ -77,21 +77,7 @@ float_tensor GetTensor(
 	return Result;
 }
 
-float GetElement(
-	float_tensor* Tensor, uint32_t* Indices, uint32_t IndexCount
-)
-{
-	assert(IndexCount <= Tensor->DimCount);
-	float* Data = Tensor->Data;
-	for(uint32_t CurrentDim = 0; CurrentDim < IndexCount; CurrentDim++)
-	{
-		Data += Indices[CurrentDim] * Tensor->Strides[CurrentDim];
-	}
-
-	return *Data;
-}
-
-float_tensor TransposeView(float_tensor* Tensor, uint32_t Dim1, uint32_t Dim2)
+float_tensor Transpose(float_tensor* Tensor, uint32_t Dim1, uint32_t Dim2)
 {
 	assert(Tensor->DimCount >= 2);
 	assert(Dim1 < Tensor->DimCount);
@@ -116,6 +102,34 @@ float_tensor TransposeView(float_tensor* Tensor, uint32_t Dim1, uint32_t Dim2)
 	Result.Strides[Dim2] = TempStride;
 
 	Result.Data = Tensor->Data;
+
+	return Result;
+}
+
+float_tensor Slice(float_tensor* Tensor, uint32_t* Pairs, uint32_t PairsCount)
+{
+	assert(PairsCount == 2 * Tensor->DimCount);
+
+	float_tensor Result = {};
+	Result.DimCount = Tensor->DimCount;
+	AllocTensorFields(&Result);
+	
+	for(uint32_t Index = 0; Index < Result.DimCount; Index++)
+	{
+		Result.Shape[Index] = Pairs[2 * Index + 1] - Pairs[2 * Index];
+	}
+
+	for(uint32_t Index = 0; Index < Result.DimCount; Index++)
+	{
+		Result.Strides[Index] = Tensor->Strides[Index];
+	}
+
+	Result.Data = Tensor->Data;
+	for(uint32_t CurrentDim = 0; CurrentDim < Tensor->DimCount; CurrentDim++)
+	{
+		assert(Pairs[2 * CurrentDim] < Tensor->Shape[CurrentDim]);
+		Result.Data += Pairs[2 * CurrentDim] * Tensor->Strides[CurrentDim];
+	}
 
 	return Result;
 }

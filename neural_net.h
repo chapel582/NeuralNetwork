@@ -3,6 +3,7 @@
 #include "project_flags.h"
 #include "int_shuffler.h"
 #include "matrix.h"
+#include "neural_net_common.h"
 
 // TODO: Need to have a platform independent way of handling threads and file io
 #include <windows.h>

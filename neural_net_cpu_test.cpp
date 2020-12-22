@@ -1,4 +1,5 @@
 #include "arg_max.h"
+#include "neural_net_common.h"
 
 #include "performance.cpp"
 #include "matrix.cpp"
@@ -170,7 +171,10 @@ int main(int argc, char* argv[])
 		printf("Zero-dimensional tensor\n");
 		PrintTensor(&Slice2);
 
-		float_tensor Transposed2d = TransposeView(Tensor, 0, 1);
+		float_tensor Transposed2d = Transpose(Tensor, 0, 1);
+		printf("Transposed2d\n");
+		PrintTensor(&Transposed2d);
+
 		float ScalarFromTranspose = GetElement(
 			&Transposed2d, GetElementIndices, 2
 		);
@@ -218,7 +222,7 @@ int main(int argc, char* argv[])
 		printf("Scalar from 3d tensor\n");
 		printf("%f\n", Scalar);
 
-		float_tensor Transposed3d = TransposeView(ThreeDTensor, 0, 1);
+		float_tensor Transposed3d = Transpose(ThreeDTensor, 0, 1);
 		printf("Transposed 3d tensor\n");
 		PrintTensor(&Transposed3d);
 
@@ -227,6 +231,13 @@ int main(int argc, char* argv[])
 		);
 		printf("Scalar from transposed 3d tensor\n");
 		printf("%f\n", ScalarFromTranspose);
+
+		uint32_t Pairs[6] = {0, 2, 1, 3, 2, 4};
+		float_tensor SliceFrom3d = Slice(
+			ThreeDTensor, Pairs, ARRAY_COUNT(Pairs)
+		);
+		printf("[0:2][1:3][2:4] slice\n");
+		PrintTensor(&SliceFrom3d);
 		// TODO: test free
 	}
 
