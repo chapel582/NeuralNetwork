@@ -158,12 +158,12 @@ int main(int argc, char* argv[])
 
 		uint32_t ZeroIndex = 0;
 		float_tensor Slice0 = GetTensor(Tensor, &ZeroIndex, 1);
-		printf("First element of last dimension\n");
+		printf("Zeroth element of last dimension\n");
 		PrintTensor(&Slice0);
 		
 		uint32_t OneIndex = 1;
 		float_tensor Slice1 = GetTensor(Tensor, &OneIndex, 1);
-		printf("Second element of last dimension\n");
+		printf("First element of last dimension\n");
 		PrintTensor(&Slice1);
 
 		uint32_t GetElementIndices[2] = {1, 2};
@@ -174,6 +174,18 @@ int main(int argc, char* argv[])
 		float_tensor Transposed2d = Transpose(Tensor, 0, 1);
 		printf("Transposed2d\n");
 		PrintTensor(&Transposed2d);
+
+		float_tensor Slice0OfTransposed = GetTensor(
+			&Transposed2d, &ZeroIndex, 1
+		);
+		printf("Zeroth slice of transposed\n");
+		PrintTensor(&Slice0OfTransposed);
+
+		float_tensor Slice1OfTransposed = GetTensor(
+			&Transposed2d, &OneIndex, 1
+		);
+		printf("First slice of transposed\n");
+		PrintTensor(&Slice1OfTransposed);
 
 		float ScalarFromTranspose = GetElement(
 			&Transposed2d, GetElementIndices, 2
