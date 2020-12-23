@@ -207,9 +207,9 @@ int main(int argc, char* argv[])
 		printf("[1:4][2:5] slice from consecutive\n");
 		PrintTensor(&SliceFrom2d);
 
-		uint32_t Pairs2[4] = {1, 3, 1, 3};
+		uint32_t Pairs3[4] = {1, 3, 1, 3};
 		float_tensor SliceFromSlice = Slice(
-			&SliceFrom2d, Pairs2, ARRAY_COUNT(Pairs2)
+			&SliceFrom2d, Pairs3, ARRAY_COUNT(Pairs3)
 		);
 		printf("[1:3][1:3] slice from slice\n");
 		PrintTensor(&SliceFromSlice);
