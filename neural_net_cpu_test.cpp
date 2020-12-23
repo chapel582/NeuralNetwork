@@ -150,7 +150,7 @@ int main(int argc, char* argv[])
 	// SECTION START: Tensor tests
 	{
 		float_tensor* Tensor = NULL;
-		uint32_t Shape[2] = {3, 3};
+		uint32_t Shape[2] = {5, 6};
 		AllocAndInitTensor(&Tensor, 2, Shape);
 		FillConsecutive(Tensor);
 		printf("Full consecutive tensor\n");
@@ -192,12 +192,26 @@ int main(int argc, char* argv[])
 		);
 		printf("Scalar from transposed 2d tensor\n");
 		printf("%f\n", ScalarFromTranspose);
+
+		uint32_t Pairs[4] = {0, 2, 1, 3};
+		float_tensor SliceFrom2d = Slice(
+			Tensor, Pairs, ARRAY_COUNT(Pairs)
+		);
+		printf("[0:2][1:3] slice from consecutive\n");
+		PrintTensor(&SliceFrom2d);
+
+		uint32_t Pairs2[4] = {1, 4, 2, 5};
+		SliceFrom2d = Slice(
+			Tensor, Pairs2, ARRAY_COUNT(Pairs2)
+		);
+		printf("[1:4][2:5] slice from consecutive\n");
+		PrintTensor(&SliceFrom2d);
 		// TODO: test free
 	}
 
 	{
 		float_tensor* ThreeDTensor = NULL;
-		uint32_t Shape[3] = {3, 4, 5};
+		uint32_t Shape[3] = {5, 6, 7};
 		AllocAndInitTensor(&ThreeDTensor, 3, Shape);
 		FillConsecutive(ThreeDTensor);
 		printf("Full consecutive 3D tensor\n");
@@ -248,7 +262,7 @@ int main(int argc, char* argv[])
 		float_tensor SliceFrom3d = Slice(
 			ThreeDTensor, Pairs, ARRAY_COUNT(Pairs)
 		);
-		printf("[0:2][1:3][2:4] slice\n");
+		printf("[0:2][1:3][2:4] slice from consecutive\n");
 		PrintTensor(&SliceFrom3d);
 		// TODO: test free
 	}
