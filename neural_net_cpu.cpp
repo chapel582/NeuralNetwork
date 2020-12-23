@@ -108,6 +108,9 @@ float_tensor Transpose(float_tensor* Tensor, uint32_t Dim1, uint32_t Dim2)
 
 float_tensor Slice(float_tensor* Tensor, uint32_t* Pairs, uint32_t PairsCount)
 {
+	// NOTE: slice returns a tensor that retains contiguous elements from the
+	// CONT: dimensions of a tensor, discarding the rest. This is done in-place
+	// CONT: with modifications to the stride data
 	assert(PairsCount == 2 * Tensor->DimCount);
 
 	float_tensor Result = {};
