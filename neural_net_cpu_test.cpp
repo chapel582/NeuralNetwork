@@ -213,6 +213,12 @@ int main(int argc, char* argv[])
 		);
 		printf("[1:3][1:3] slice from slice\n");
 		PrintTensor(&SliceFromSlice);
+
+		SliceFrom2d = Slice(
+			&Transposed2d, Pairs2, ARRAY_COUNT(Pairs2)
+		);
+		printf("[1:4][2:5] slice from transpose\n");
+		PrintTensor(&SliceFrom2d);
 		// TODO: test free
 	}
 
