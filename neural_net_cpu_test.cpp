@@ -261,6 +261,10 @@ int main(int argc, char* argv[])
 		printf("Scalar from 3d tensor\n");
 		printf("%f\n", Scalar);
 
+		Scalar = GetElement(ThreeDTensor, 1, 2, 3);
+		printf("Scalar from 3d tensor using variable args\n");
+		printf("%f\n", Scalar);
+
 		float_tensor Transposed3d = Transpose(ThreeDTensor, 0, 1);
 		printf("Transposed 3d tensor\n");
 		PrintTensor(&Transposed3d);
