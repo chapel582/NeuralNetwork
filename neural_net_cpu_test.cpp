@@ -265,6 +265,18 @@ int main(int argc, char* argv[])
 		printf("Scalar from transposed 3d tensor\n");
 		printf("%f\n", ScalarFromTranspose);
 
+		float_tensor Slice0OfTransposed = GetTensor(
+			&Transposed3d, &ZeroIndex, 1
+		);
+		printf("Zeroth slice of transposed\n");
+		PrintTensor(&Slice0OfTransposed);
+
+		float_tensor Slice1OfTransposed = GetTensor(
+			&Transposed3d, &OneIndex, 1
+		);
+		printf("First slice of transposed\n");
+		PrintTensor(&Slice1OfTransposed);
+
 		uint32_t Pairs[6] = {0, 1, 0, 2, 0, 2};
 		float_tensor SliceFrom3d = Slice(
 			ThreeDTensor, Pairs, ARRAY_COUNT(Pairs)
