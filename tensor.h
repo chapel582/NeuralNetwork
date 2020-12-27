@@ -106,6 +106,96 @@ void PrintTensor(float_tensor* Tensor)
 	printf("\n");
 }
 
+inline bool IsSameShape(float_tensor* Tensor1, float_tensor* Tensor2)
+{
+	if(Tensor1->DimCount != Tensor2->DimCount)
+	{
+		return false;
+	}
+	int Cmp = memcmp(
+		Tensor1->Shape, Tensor2->Shape, Tensor1->DimCount * sizeof(uint32_t)
+	);
+	return Cmp == 0;
+}
+
+void ScalarMult(float_tensor* Result, float_tensor* Input, float Scalar)
+{
+	assert(IsSameShape(Result, Input));
+	if(Input->DimCount > 0)
+	{
+		uint32_t TotalElements = GetTotalElements(Input);
+		for(
+			uint32_t ElementIndex = 0;
+			ElementIndex < TotalElements;
+			ElementIndex++
+		)
+		{
+			uint32_t Offset = 0;
+			uint32_t ElementsInDimension = 1;
+			for(
+				int32_t CurrentDim = Input->DimCount - 1;
+				CurrentDim >= 0;
+				CurrentDim--
+			)
+			{
+				uint32_t DimIndex = (
+					(ElementIndex / ElementsInDimension) %
+					Input->Shape[CurrentDim]
+				);
+				Offset += DimIndex * Input->Strides[CurrentDim];
+				ElementsInDimension *= Input->Shape[CurrentDim];
+			}
+			Result->Data[Offset] = Scalar * Input->Data[Offset];
+		}
+	}
+	else
+	{
+		Result->Data[0] = Scalar * Input->Data[0];
+	}
+}
+
+typedef float float_to_float_function(float Arg);
+
+void OneTensorBroadcast(
+	float_tensor* Result,
+	float_tensor* Input,
+	float_to_float_function* FtfFunction
+)
+{
+	assert(IsSameShape(Result, Input));
+	if(Input->DimCount > 0)
+	{
+		uint32_t TotalElements = GetTotalElements(Input);
+		for(
+			uint32_t ElementIndex = 0;
+			ElementIndex < TotalElements;
+			ElementIndex++
+		)
+		{
+			uint32_t Offset = 0;
+			uint32_t ElementsInDimension = 1;
+			for(
+				int32_t CurrentDim = Input->DimCount - 1;
+				CurrentDim >= 0;
+				CurrentDim--
+			)
+			{
+				uint32_t DimIndex = (
+					(ElementIndex / ElementsInDimension) %
+					Input->Shape[CurrentDim]
+				);
+				Offset += DimIndex * Input->Strides[CurrentDim];
+				ElementsInDimension *= Input->Shape[CurrentDim];
+			}
+			Result->Data[Offset] = FtfFunction(Input->Data[Offset]);
+		}
+	}
+	else
+	{
+		Result->Data[0] = FtfFunction(Input->Data[0]);
+	}
+}
+
 // TODO: TransposeCopy
 
 #define TENSOR_H

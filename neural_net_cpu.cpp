@@ -136,11 +136,8 @@ float_tensor Slice(float_tensor* Tensor, uint32_t* Pairs, uint32_t PairsCount)
 
 	return Result;
 }
-// TODO: Copy
-// TODO: GetElement
-// TODO: GetCopy
-// TODO: transpose
-// TODO: Slicing a larger tensor down
+
+// TODO: Copy tensor
 
 void InitMatrix(matrix* Matrix, uint32_t NumRows, uint32_t NumColumns)
 {

@@ -17,6 +17,18 @@
 
 #include "tensor.h"
 
+float ScalarRelu(float Input)
+{
+	if(Input >= 0)
+	{
+		return Input;
+	}
+	else
+	{
+		return 0;
+	}
+} 
+
 void FillConsecutive(float_tensor* Tensor)
 {
 	// NOTE: assumes memory is contiguous
@@ -307,6 +319,40 @@ int main(int argc, char* argv[])
 		);
 		printf("[0:2][1:3][2:4] slice from consecutive\n");
 		PrintTensor(&SliceFrom3d);
+		// TODO: test free
+	}
+
+	{
+		float_tensor* ThreeDTensor = NULL;
+		uint32_t Shape[3] = {5, 6, 7};
+		AllocAndInitTensor(&ThreeDTensor, 3, Shape);
+		FillConsecutive(ThreeDTensor);
+		printf("Full consecutive 3D tensor\n");
+		PrintTensor(ThreeDTensor);
+		
+		OneTensorBroadcast(
+			ThreeDTensor, ThreeDTensor,	ScalarRelu
+		);
+		printf("Full consecutive 3D tensor RELU\n");
+		PrintTensor(ThreeDTensor);
+
+		OneTensorBroadcast(
+			ThreeDTensor, ThreeDTensor,	ScalarRelu
+		);
+		printf("Full consecutive 3D tensor RELU\n");
+		PrintTensor(ThreeDTensor);
+
+		ScalarMult(
+			ThreeDTensor, ThreeDTensor,	-1.0f
+		);
+		printf("Full consecutive 3D tensor Negated\n");
+		PrintTensor(ThreeDTensor);
+
+		OneTensorBroadcast(
+			ThreeDTensor, ThreeDTensor,	ScalarRelu
+		);
+		printf("Negated 3D tensor RELU\n");
+		PrintTensor(ThreeDTensor);
 		// TODO: test free
 	}
 
