@@ -118,39 +118,55 @@ inline bool IsSameShape(float_tensor* Tensor1, float_tensor* Tensor2)
 	return Cmp == 0;
 }
 
+uint32_t GetTensorElementOffset(float_tensor* Tensor, uint32_t ElementIndex)
+{
+	// NOTE: for accessing the Nth element of a tensor
+	uint32_t Offset = 0;
+	uint32_t ElementsInDimension = 1;
+	for(
+		int32_t CurrentDim = Tensor->DimCount - 1;
+		CurrentDim >= 0;
+		CurrentDim--
+	)
+	{
+		uint32_t DimIndex = (
+			(ElementIndex / ElementsInDimension) %
+			Tensor->Shape[CurrentDim]
+		);
+		Offset += DimIndex * Tensor->Strides[CurrentDim];
+		ElementsInDimension *= Tensor->Shape[CurrentDim];
+	}
+
+	return Offset;
+}
+
 void ScalarMult(float_tensor* Result, float_tensor* Input, float Scalar)
 {
 	assert(IsSameShape(Result, Input));
-	if(Input->DimCount > 0)
+	uint32_t TotalElements = GetTotalElements(Input);
+	for(
+		uint32_t ElementIndex = 0;
+		ElementIndex < TotalElements;
+		ElementIndex++
+	)
 	{
-		uint32_t TotalElements = GetTotalElements(Input);
-		for(
-			uint32_t ElementIndex = 0;
-			ElementIndex < TotalElements;
-			ElementIndex++
-		)
-		{
-			uint32_t Offset = 0;
-			uint32_t ElementsInDimension = 1;
-			for(
-				int32_t CurrentDim = Input->DimCount - 1;
-				CurrentDim >= 0;
-				CurrentDim--
-			)
-			{
-				uint32_t DimIndex = (
-					(ElementIndex / ElementsInDimension) %
-					Input->Shape[CurrentDim]
-				);
-				Offset += DimIndex * Input->Strides[CurrentDim];
-				ElementsInDimension *= Input->Shape[CurrentDim];
-			}
-			Result->Data[Offset] = Scalar * Input->Data[Offset];
-		}
+		uint32_t Offset = GetTensorElementOffset(Input, ElementIndex);
+		Result->Data[Offset] = Scalar * Input->Data[Offset];
 	}
-	else
+}
+
+void ScalarAdd(float_tensor* Result, float_tensor* Input, float Scalar)
+{
+	assert(IsSameShape(Result, Input));
+	uint32_t TotalElements = GetTotalElements(Input);
+	for(
+		uint32_t ElementIndex = 0;
+		ElementIndex < TotalElements;
+		ElementIndex++
+	)
 	{
-		Result->Data[0] = Scalar * Input->Data[0];
+		uint32_t Offset = GetTensorElementOffset(Input, ElementIndex);
+		Result->Data[Offset] = Input->Data[Offset] + Scalar;
 	}
 }
 
@@ -163,36 +179,38 @@ void OneTensorBroadcast(
 )
 {
 	assert(IsSameShape(Result, Input));
-	if(Input->DimCount > 0)
+	uint32_t TotalElements = GetTotalElements(Input);
+	for(
+		uint32_t ElementIndex = 0;
+		ElementIndex < TotalElements;
+		ElementIndex++
+	)
 	{
-		uint32_t TotalElements = GetTotalElements(Input);
-		for(
-			uint32_t ElementIndex = 0;
-			ElementIndex < TotalElements;
-			ElementIndex++
-		)
-		{
-			uint32_t Offset = 0;
-			uint32_t ElementsInDimension = 1;
-			for(
-				int32_t CurrentDim = Input->DimCount - 1;
-				CurrentDim >= 0;
-				CurrentDim--
-			)
-			{
-				uint32_t DimIndex = (
-					(ElementIndex / ElementsInDimension) %
-					Input->Shape[CurrentDim]
-				);
-				Offset += DimIndex * Input->Strides[CurrentDim];
-				ElementsInDimension *= Input->Shape[CurrentDim];
-			}
-			Result->Data[Offset] = FtfFunction(Input->Data[Offset]);
-		}
+		uint32_t Offset = GetTensorElementOffset(Input, ElementIndex);
+		Result->Data[Offset] = FtfFunction(Input->Data[Offset]);
 	}
-	else
+}
+
+typedef float two_arg_ftf(float Arg1, float Arg2);
+void TwoTensorBroadcast(
+	float_tensor* Result,
+	float_tensor* T1,
+	float_tensor* T2,
+	two_arg_ftf FtfFunction
+)
+{
+	assert(IsSameShape(Result, T1));
+	assert(IsSameShape(Result, T2));
+
+	uint32_t TotalElements = GetTotalElements(T1);
+	for(
+		uint32_t ElementIndex = 0;
+		ElementIndex < TotalElements;
+		ElementIndex++
+	)
 	{
-		Result->Data[0] = FtfFunction(Input->Data[0]);
+		uint32_t Offset = GetTensorElementOffset(T1, ElementIndex);
+		Result->Data[Offset] = FtfFunction(T1->Data[Offset], T2->Data[Offset]);
 	}
 }
 

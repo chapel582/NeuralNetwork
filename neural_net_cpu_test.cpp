@@ -324,7 +324,7 @@ int main(int argc, char* argv[])
 
 	{
 		float_tensor* ThreeDTensor = NULL;
-		uint32_t Shape[3] = {5, 6, 7};
+		uint32_t Shape[3] = {3, 4, 5};
 		AllocAndInitTensor(&ThreeDTensor, 3, Shape);
 		FillConsecutive(ThreeDTensor);
 		printf("Full consecutive 3D tensor\n");
@@ -352,6 +352,32 @@ int main(int argc, char* argv[])
 			ThreeDTensor, ThreeDTensor,	ScalarRelu
 		);
 		printf("Negated 3D tensor RELU\n");
+		PrintTensor(ThreeDTensor);
+		// TODO: test free
+	}
+
+	{
+		float_tensor* ThreeDTensor = NULL;
+		uint32_t Shape[3] = {5, 6, 7};
+		AllocAndInitTensor(&ThreeDTensor, 3, Shape);
+		FillConsecutive(ThreeDTensor);
+		printf("Full consecutive 3D tensor\n");
+		PrintTensor(ThreeDTensor);
+
+		uint32_t Pairs3[6] = {0, 2, 1, 3, 2, 4};
+		float_tensor SliceFrom3d = Slice(
+			ThreeDTensor, Pairs3, ARRAY_COUNT(Pairs3)
+		);
+		printf("[0:2][1:3][2:4] slice from consecutive\n");
+		PrintTensor(&SliceFrom3d);
+		ScalarMult(&SliceFrom3d, &SliceFrom3d, 2.0f);
+		printf("2.0f * [0:2][1:3][2:4] slice from consecutive\n");
+		PrintTensor(&SliceFrom3d);
+		ScalarAdd(&SliceFrom3d, &SliceFrom3d, 1.0f);
+		printf("2.0f * [0:2][1:3][2:4] + 1.0f slice from consecutive\n");
+		PrintTensor(&SliceFrom3d);
+
+		printf("Full tensor final\n");
 		PrintTensor(ThreeDTensor);
 		// TODO: test free
 	}
