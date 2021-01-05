@@ -19,6 +19,7 @@
 
 float ScalarRelu(float Input)
 {
+	// TODO: move to common area?
 	if(Input >= 0)
 	{
 		return Input;
@@ -27,7 +28,17 @@ float ScalarRelu(float Input)
 	{
 		return 0;
 	}
-} 
+}
+
+float Add(float Arg1, float Arg2)
+{
+	return Arg1 + Arg2;
+}
+
+float Multiply(float Arg1, float Arg2)
+{
+	return Arg1 * Arg2;
+}
 
 void FillConsecutive(float_tensor* Tensor)
 {
@@ -379,6 +390,50 @@ int main(int argc, char* argv[])
 
 		printf("Full tensor final\n");
 		PrintTensor(ThreeDTensor);
+		// TODO: test free
+	}
+
+	{
+		float_tensor* ThreeDTensor = NULL;
+		uint32_t Shape[3] = {5, 6, 7};
+		AllocAndInitTensor(&ThreeDTensor, 3, Shape);
+		FillConsecutive(ThreeDTensor);
+		printf("Full consecutive 3D tensor\n");
+		PrintTensor(ThreeDTensor);
+
+		float_tensor* SmallThreeDTensor = NULL;
+		uint32_t Shape2[3] = {2, 2, 2};
+		AllocAndInitTensor(&SmallThreeDTensor, 3, Shape2);
+		FillConsecutive(SmallThreeDTensor);
+		printf("Small 3d tensor\n");
+		PrintTensor(SmallThreeDTensor);
+
+		uint32_t Pairs[6] = {0, 2, 0, 2, 2, 4};
+		float_tensor SliceFrom3d = Slice(
+			ThreeDTensor, Pairs, ARRAY_COUNT(Pairs)
+		);
+		printf("[0:2][1:3][2:4] slice from consecutive\n");
+		PrintTensor(&SliceFrom3d);
+
+		TwoTensorBroadcast(
+			SmallThreeDTensor,
+			&SliceFrom3d,
+			SmallThreeDTensor,
+			Add
+		);
+
+		TwoTensorBroadcast(
+			SmallThreeDTensor,
+			SmallThreeDTensor,
+			SmallThreeDTensor,
+			Multiply
+		);
+
+		printf("Large tensor final\n");
+		PrintTensor(ThreeDTensor);
+
+		printf("Small tensor final\n");
+		PrintTensor(SmallThreeDTensor);
 		// TODO: test free
 	}
 

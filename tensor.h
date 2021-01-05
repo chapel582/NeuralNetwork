@@ -209,8 +209,12 @@ void TwoTensorBroadcast(
 		ElementIndex++
 	)
 	{
-		uint32_t Offset = GetTensorElementOffset(T1, ElementIndex);
-		Result->Data[Offset] = FtfFunction(T1->Data[Offset], T2->Data[Offset]);
+		uint32_t ResultOffset = GetTensorElementOffset(Result, ElementIndex);
+		uint32_t T1Offset = GetTensorElementOffset(T1, ElementIndex);
+		uint32_t T2Offset = GetTensorElementOffset(T2, ElementIndex);
+		Result->Data[ResultOffset] = FtfFunction(
+			T1->Data[T1Offset], T2->Data[T2Offset]
+		);
 	}
 }
 
