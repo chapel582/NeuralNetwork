@@ -17,6 +17,14 @@ struct float_tensor
 	float* Data;
 };
 
+#pragma pack(push, 1)
+struct tensor_header
+{
+	uint32_t DimCount;
+	// TODO: add endianness check here
+};
+#pragma pack(pop)
+
 inline uint32_t GetTotalElements(float_tensor* Tensor)
 {
 	uint32_t TotalElements = 1;
@@ -191,6 +199,28 @@ void OneTensorBroadcast(
 	}
 }
 
+bool AreTensorsEquivalent(float_tensor* T1, float_tensor* T2)
+{
+	assert(IsSameShape(T1, T2));
+
+	uint32_t TotalElements = GetTotalElements(T1);
+	for(
+		uint32_t ElementIndex = 0;
+		ElementIndex < TotalElements;
+		ElementIndex++
+	)
+	{
+		uint32_t T1Offset = GetTensorElementOffset(T1, ElementIndex);
+		uint32_t T2Offset = GetTensorElementOffset(T2, ElementIndex);
+		if(T1->Data[T1Offset] != T2->Data[T2Offset])
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
 typedef float two_arg_ftf(float Arg1, float Arg2);
 void TwoTensorBroadcast(
 	float_tensor* Result,
@@ -216,6 +246,18 @@ void TwoTensorBroadcast(
 			T1->Data[T1Offset], T2->Data[T2Offset]
 		);
 	}
+}
+
+inline uint32_t GetTensorDataSize(float_tensor* Tensor)
+{
+	uint32_t Result = 1;
+	uint32_t* Shape = Tensor->Shape; 
+	for(uint32_t Index = 0; Index < Tensor->DimCount; Index++)
+	{
+		Result *= Shape[Index];
+	}
+
+	return Result * sizeof(*Tensor->Data);
 }
 
 // TODO: TransposeCopy

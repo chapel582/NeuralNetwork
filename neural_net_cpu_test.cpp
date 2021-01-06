@@ -50,8 +50,7 @@ void FillConsecutive(float_tensor* Tensor)
 	}
 }
 
-matrix* TestMatrixResult(
-	matrix* M1,
+void GetTestResultFilePath(
 	char* FilePathBuffer,
 	size_t FilePathBufferSize,
 	char* TestDataDirectory,
@@ -67,11 +66,42 @@ matrix* TestMatrixResult(
 		TestName,
 		EndianString
 	);
-#if SAVE_RESULTS
-	SaveMatrix(M1, FilePathBuffer);
-#endif
+}
 
-	matrix* CompareTo;
+void TestTensorResult(
+	float_tensor* T1,
+	char* FilePathBuffer,
+	size_t FilePathBufferSize,
+	char* TestName
+)
+{
+	float_tensor CompareTo = {};
+	bool LoadResult = LoadTensor(
+		&CompareTo, FilePathBuffer, FilePathBufferSize
+	);
+	if(!LoadResult)
+	{
+		printf("Could not read %s\n", FilePathBuffer);
+	}
+	else if(!AreTensorsEquivalent(T1, &CompareTo))
+	{
+		printf("%s failed\n", TestName);
+		printf("Expected\n");
+		PrintTensor(&CompareTo);
+		printf("Got\n");
+		PrintTensor(T1);
+	}
+
+	// TODO: free compareto data
+}
+
+matrix* TestMatrixResult(
+	matrix* M1,
+	char* FilePathBuffer,
+	char* TestName
+)
+{
+	matrix* CompareTo = NULL;
 	AllocMatrix(&CompareTo, M1->NumRows, M1->NumColumns);
 	bool LoadResult = LoadMatrix(CompareTo, FilePathBuffer);
 	if(!LoadResult)
@@ -90,30 +120,22 @@ matrix* TestMatrixResult(
 	return CompareTo;
 }
 
-void TestFloatResult(
-	float Result,
-	char* FilePathBuffer,
-	size_t FilePathBufferSize,
-	char* TestDataDirectory,
-	char* TestName,
-	char* EndianString
-)
+void SaveFloatResult(float Result, char* FilePathBuffer)
 {
-	snprintf(
-		FilePathBuffer,
-		FilePathBufferSize,
-		"%s/%s_%s.data",
-		TestDataDirectory,
-		TestName,
-		EndianString
-	);
-	FILE* File;
-#if SAVE_RESULTS
+	FILE* File = NULL;
 	fopen_s(&File, FilePathBuffer, "w");
 	fwrite(&Result, 1, sizeof(float), File);
 	fclose(File);
-#endif 
-	float Expected;
+}
+
+void TestFloatResult(
+	float Result,
+	char* FilePathBuffer,
+	char* TestName
+)
+{
+	FILE* File = NULL;
+	float Expected = 0.0f;
 	fopen_s(&File, FilePathBuffer, "r");
 	fread(&Expected, 1, sizeof(float), File);
 	fclose(File);
@@ -165,6 +187,7 @@ int main(int argc, char* argv[])
 		strcpy_s(EndianString, sizeof(EndianString), "LittleEndian");
 	}
 	char FilePathBuffer[260];
+	size_t FilePathBufferSize = sizeof(FilePathBuffer);
 
 	LARGE_INTEGER PerformanceFrequency;
 	QueryPerformanceFrequency(&PerformanceFrequency);
@@ -176,266 +199,388 @@ int main(int argc, char* argv[])
 		uint32_t Shape[2] = {5, 6};
 		AllocAndInitTensor(&Tensor, 2, Shape);
 		FillConsecutive(Tensor);
-		printf("Full consecutive tensor\n");
-		PrintTensor(Tensor);
 
 		uint32_t ZeroIndex = 0;
-		float_tensor Slice0 = GetTensor(Tensor, &ZeroIndex, 1);
-		printf("Zeroth element of last dimension\n");
-		PrintTensor(&Slice0);
+		float_tensor Subtensor0 = GetTensor(Tensor, &ZeroIndex, 1);
+		GetTestResultFilePath(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"GetTensorFrom2dTensor0",
+			EndianString
+		);
+		SaveTensor(&Subtensor0, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&Subtensor0,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"GetTensorFrom2dTensor0"
+		);
 		
 		uint32_t OneIndex = 1;
-		float_tensor Slice1 = GetTensor(Tensor, &OneIndex, 1);
-		printf("First element of last dimension\n");
-		PrintTensor(&Slice1);
+		float_tensor Subtensor1 = GetTensor(Tensor, &OneIndex, 1);
+		GetTestResultFilePath(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"GetTensorFrom2dTensor1",
+			EndianString
+		);
+		TestTensorResult(
+			&Subtensor1,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"GetTensorFrom2dTensor1"
+		);
 
 		uint32_t GetElementIndices[2] = {1, 2};
-		float_tensor Slice2 = GetTensor(Tensor, GetElementIndices, 2);
-		printf("Zero-dimensional tensor\n");
-		PrintTensor(&Slice2);
+		float_tensor Subtensor2 = GetTensor(Tensor, GetElementIndices, 2);
+		GetTestResultFilePath(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"Get0dTensorFrom2dTensor",
+			EndianString
+		);
+		TestTensorResult(
+			&Subtensor2,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"Get0dTensorFrom2dTensor"
+		);
 
 		float_tensor Transposed2d = Transpose(Tensor, 0, 1);
-		printf("Transposed2d\n");
-		PrintTensor(&Transposed2d);
+		GetTestResultFilePath(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"Transpose2dTensor",
+			EndianString
+		);
+		TestTensorResult(
+			&Transposed2d,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"Transpose2dTensor"
+		);
 
-		float_tensor Slice0OfTransposed = GetTensor(
+		float_tensor Subtensor0OfTransposed = GetTensor(
 			&Transposed2d, &ZeroIndex, 1
 		);
-		printf("Zeroth slice of transposed\n");
-		PrintTensor(&Slice0OfTransposed);
+		GetTestResultFilePath(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"GetTensorFromTransposed0",
+			EndianString
+		);
+		TestTensorResult(
+			&Subtensor0OfTransposed,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"GetTensorFromTransposed0"
+		);
 
-		float_tensor Slice1OfTransposed = GetTensor(
+		float_tensor Subtensor1OfTransposed = GetTensor(
 			&Transposed2d, &OneIndex, 1
 		);
-		printf("First slice of transposed\n");
-		PrintTensor(&Slice1OfTransposed);
+		GetTestResultFilePath(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"GetTensorFromTransposed1",
+			EndianString
+		);
+		SaveTensor(&Subtensor1OfTransposed, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&Subtensor1OfTransposed,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"GetTensorFromTransposed1"
+		);
 
 		float ScalarFromTranspose = GetElement(
 			&Transposed2d, GetElementIndices, 2
 		);
-		printf("Scalar from transposed 2d tensor\n");
-		printf("%f\n", ScalarFromTranspose);
+		GetTestResultFilePath(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"GetScalarFromTransposed0",
+			EndianString
+		);
+		SaveFloatResult(ScalarFromTranspose, FilePathBuffer);
+		TestFloatResult(
+			ScalarFromTranspose, FilePathBuffer, "GetScalarFromTransposed0"
+		);
 
 		uint32_t Pairs[4] = {0, 2, 1, 3};
 		float_tensor SliceFrom2d = Slice(
 			Tensor, Pairs, ARRAY_COUNT(Pairs)
 		);
-		printf("[0:2][1:3] slice from consecutive\n");
-		PrintTensor(&SliceFrom2d);
+		GetTestResultFilePath(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"Slice2dTensor0",
+			EndianString
+		);
+		TestTensorResult(
+			&SliceFrom2d,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"Slice2dTensor0"
+		);
 
 		uint32_t Pairs2[4] = {1, 4, 2, 5};
 		SliceFrom2d = Slice(
 			Tensor, Pairs2, ARRAY_COUNT(Pairs2)
 		);
-		printf("[1:4][2:5] slice from consecutive\n");
-		PrintTensor(&SliceFrom2d);
+		GetTestResultFilePath(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"Slice2dTensor1",
+			EndianString
+		);
+		TestTensorResult(
+			&SliceFrom2d,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"Slice2dTensor1"
+		);
 
 		uint32_t Pairs3[4] = {1, 3, 1, 3};
 		float_tensor SliceFromSlice = Slice(
 			&SliceFrom2d, Pairs3, ARRAY_COUNT(Pairs3)
 		);
-		printf("[1:3][1:3] slice from slice\n");
-		PrintTensor(&SliceFromSlice);
+		GetTestResultFilePath(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"Slice2dTensor2",
+			EndianString
+		);
+		TestTensorResult(
+			&SliceFrom2d,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"Slice2dTensor2"
+		);
 
 		SliceFrom2d = Slice(
 			&Transposed2d, Pairs2, ARRAY_COUNT(Pairs2)
 		);
 		printf("[1:4][2:5] slice from transpose\n");
 		PrintTensor(&SliceFrom2d);
+		GetTestResultFilePath(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"SliceTranposed2dTensor0",
+			EndianString
+		);
+		TestTensorResult(
+			&SliceFrom2d,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"SliceTranposed2dTensor0"
+		);
+
 		// TODO: test free
 	}
 
-	{
-		float_tensor* ThreeDTensor = NULL;
-		uint32_t Shape[3] = {5, 6, 7};
-		AllocAndInitTensor(&ThreeDTensor, 3, Shape);
-		FillConsecutive(ThreeDTensor);
-		printf("Full consecutive 3D tensor\n");
-		PrintTensor(ThreeDTensor);
+	// {
+	// 	float_tensor* ThreeDTensor = NULL;
+	// 	uint32_t Shape[3] = {5, 6, 7};
+	// 	AllocAndInitTensor(&ThreeDTensor, 3, Shape);
+	// 	FillConsecutive(ThreeDTensor);
+	// 	printf("Full consecutive 3D tensor\n");
+	// 	PrintTensor(ThreeDTensor);
 		
-		uint32_t ZeroIndex = 0;
-		float_tensor TwoDZeroth = GetTensor(ThreeDTensor, &ZeroIndex, 1);
-		printf("Zeroth 2D tensor\n");
-		PrintTensor(&TwoDZeroth);
+	// 	uint32_t ZeroIndex = 0;
+	// 	float_tensor TwoDZeroth = GetTensor(ThreeDTensor, &ZeroIndex, 1);
+	// 	printf("Zeroth 2D tensor\n");
+	// 	PrintTensor(&TwoDZeroth);
 		
-		uint32_t OneIndex = 1;
-		float_tensor TwoDFirst = GetTensor(ThreeDTensor, &OneIndex, 1);
-		printf("First 2d tensor\n");
-		PrintTensor(&TwoDFirst);
+	// 	uint32_t OneIndex = 1;
+	// 	float_tensor TwoDFirst = GetTensor(ThreeDTensor, &OneIndex, 1);
+	// 	printf("First 2d tensor\n");
+	// 	PrintTensor(&TwoDFirst);
 
-		uint32_t GetOneD[2] = {1, 2};
-		float_tensor OneDTensor = GetTensor(ThreeDTensor, GetOneD, 2);
-		printf("One-dimensional tensor\n");
-		PrintTensor(&OneDTensor);
+	// 	uint32_t GetOneD[2] = {1, 2};
+	// 	float_tensor OneDTensor = GetTensor(ThreeDTensor, GetOneD, 2);
+	// 	printf("One-dimensional tensor\n");
+	// 	PrintTensor(&OneDTensor);
 
-		uint32_t GetElementIndices[3] = {1, 2, 3};
-		float_tensor ZeroD = GetTensor(ThreeDTensor, GetElementIndices, 3);
-		printf("Zero-dimensional tensor\n");
-		PrintTensor(&ZeroD);
+	// 	uint32_t GetElementIndices[3] = {1, 2, 3};
+	// 	float_tensor ZeroD = GetTensor(ThreeDTensor, GetElementIndices, 3);
+	// 	printf("Zero-dimensional tensor\n");
+	// 	PrintTensor(&ZeroD);
 
-		uint32_t ZeroDFromOneDIndex = 3;
-		float_tensor ZeroDFromOneD = GetTensor(
-			&OneDTensor, &ZeroDFromOneDIndex, 1
-		);
-		printf("Zero-dimensional tensor from one-dimensional tensor\n");
-		PrintTensor(&ZeroDFromOneD);
+	// 	uint32_t ZeroDFromOneDIndex = 3;
+	// 	float_tensor ZeroDFromOneD = GetTensor(
+	// 		&OneDTensor, &ZeroDFromOneDIndex, 1
+	// 	);
+	// 	printf("Zero-dimensional tensor from one-dimensional tensor\n");
+	// 	PrintTensor(&ZeroDFromOneD);
 
-		float Scalar = GetElement(ThreeDTensor, GetElementIndices, 3);
-		printf("Scalar from 3d tensor\n");
-		printf("%f\n", Scalar);
+	// 	float Scalar = GetElement(ThreeDTensor, GetElementIndices, 3);
+	// 	printf("Scalar from 3d tensor\n");
+	// 	printf("%f\n", Scalar);
 
-		Scalar = GetElement(ThreeDTensor, 1, 2, 3);
-		printf("Scalar from 3d tensor using variable args\n");
-		printf("%f\n", Scalar);
+	// 	Scalar = GetElement(ThreeDTensor, 1, 2, 3);
+	// 	printf("Scalar from 3d tensor using variable args\n");
+	// 	printf("%f\n", Scalar);
 
-		float_tensor Transposed3d = Transpose(ThreeDTensor, 0, 1);
-		printf("Transposed 3d tensor\n");
-		PrintTensor(&Transposed3d);
+	// 	float_tensor Transposed3d = Transpose(ThreeDTensor, 0, 1);
+	// 	printf("Transposed 3d tensor\n");
+	// 	PrintTensor(&Transposed3d);
 
-		float ScalarFromTranspose = GetElement(
-			&Transposed3d, GetElementIndices, 3
-		);
-		printf("Scalar from transposed 3d tensor\n");
-		printf("%f\n", ScalarFromTranspose);
+	// 	float ScalarFromTranspose = GetElement(
+	// 		&Transposed3d, GetElementIndices, 3
+	// 	);
+	// 	printf("Scalar from transposed 3d tensor\n");
+	// 	printf("%f\n", ScalarFromTranspose);
 
-		float_tensor Slice0OfTransposed = GetTensor(
-			&Transposed3d, &ZeroIndex, 1
-		);
-		printf("Zeroth slice of transposed\n");
-		PrintTensor(&Slice0OfTransposed);
+	// 	float_tensor Slice0OfTransposed = GetTensor(
+	// 		&Transposed3d, &ZeroIndex, 1
+	// 	);
+	// 	printf("Zeroth slice of transposed\n");
+	// 	PrintTensor(&Slice0OfTransposed);
 
-		float_tensor Slice1OfTransposed = GetTensor(
-			&Transposed3d, &OneIndex, 1
-		);
-		printf("First slice of transposed\n");
-		PrintTensor(&Slice1OfTransposed);
+	// 	float_tensor Slice1OfTransposed = GetTensor(
+	// 		&Transposed3d, &OneIndex, 1
+	// 	);
+	// 	printf("First slice of transposed\n");
+	// 	PrintTensor(&Slice1OfTransposed);
 
-		uint32_t Pairs[6] = {0, 1, 0, 2, 0, 2};
-		float_tensor SliceFrom3d = Slice(
-			ThreeDTensor, Pairs, ARRAY_COUNT(Pairs)
-		);
-		printf("[0:1][0:2][0:2] slice from consecutive\n");
-		PrintTensor(&SliceFrom3d);
+	// 	uint32_t Pairs[6] = {0, 1, 0, 2, 0, 2};
+	// 	float_tensor SliceFrom3d = Slice(
+	// 		ThreeDTensor, Pairs, ARRAY_COUNT(Pairs)
+	// 	);
+	// 	printf("[0:1][0:2][0:2] slice from consecutive\n");
+	// 	PrintTensor(&SliceFrom3d);
 
-		uint32_t Pairs2[6] = {0, 2, 0, 2, 0, 2};
-		SliceFrom3d = Slice(
-			ThreeDTensor, Pairs2, ARRAY_COUNT(Pairs2)
-		);
-		printf("[0:2][0:2][0:2] slice from consecutive\n");
-		PrintTensor(&SliceFrom3d);
+	// 	uint32_t Pairs2[6] = {0, 2, 0, 2, 0, 2};
+	// 	SliceFrom3d = Slice(
+	// 		ThreeDTensor, Pairs2, ARRAY_COUNT(Pairs2)
+	// 	);
+	// 	printf("[0:2][0:2][0:2] slice from consecutive\n");
+	// 	PrintTensor(&SliceFrom3d);
 
-		uint32_t Pairs3[6] = {0, 2, 1, 3, 2, 4};
-		SliceFrom3d = Slice(
-			ThreeDTensor, Pairs3, ARRAY_COUNT(Pairs3)
-		);
-		printf("[0:2][1:3][2:4] slice from consecutive\n");
-		PrintTensor(&SliceFrom3d);
-		// TODO: test free
-	}
+	// 	uint32_t Pairs3[6] = {0, 2, 1, 3, 2, 4};
+	// 	SliceFrom3d = Slice(
+	// 		ThreeDTensor, Pairs3, ARRAY_COUNT(Pairs3)
+	// 	);
+	// 	printf("[0:2][1:3][2:4] slice from consecutive\n");
+	// 	PrintTensor(&SliceFrom3d);
+	// 	// TODO: test free
+	// }
 
-	{
-		float_tensor* ThreeDTensor = NULL;
-		uint32_t Shape[3] = {3, 4, 5};
-		AllocAndInitTensor(&ThreeDTensor, 3, Shape);
-		FillConsecutive(ThreeDTensor);
-		printf("Full consecutive 3D tensor\n");
-		PrintTensor(ThreeDTensor);
+	// {
+	// 	float_tensor* ThreeDTensor = NULL;
+	// 	uint32_t Shape[3] = {3, 4, 5};
+	// 	AllocAndInitTensor(&ThreeDTensor, 3, Shape);
+	// 	FillConsecutive(ThreeDTensor);
+	// 	printf("Full consecutive 3D tensor\n");
+	// 	PrintTensor(ThreeDTensor);
 		
-		OneTensorBroadcast(
-			ThreeDTensor, ThreeDTensor,	ScalarRelu
-		);
-		printf("Full consecutive 3D tensor RELU\n");
-		PrintTensor(ThreeDTensor);
+	// 	OneTensorBroadcast(
+	// 		ThreeDTensor, ThreeDTensor,	ScalarRelu
+	// 	);
+	// 	printf("Full consecutive 3D tensor RELU\n");
+	// 	PrintTensor(ThreeDTensor);
 
-		OneTensorBroadcast(
-			ThreeDTensor, ThreeDTensor,	ScalarRelu
-		);
-		printf("Full consecutive 3D tensor RELU\n");
-		PrintTensor(ThreeDTensor);
+	// 	OneTensorBroadcast(
+	// 		ThreeDTensor, ThreeDTensor,	ScalarRelu
+	// 	);
+	// 	printf("Full consecutive 3D tensor RELU\n");
+	// 	PrintTensor(ThreeDTensor);
 
-		ScalarMult(
-			ThreeDTensor, ThreeDTensor,	-1.0f
-		);
-		printf("Full consecutive 3D tensor Negated\n");
-		PrintTensor(ThreeDTensor);
+	// 	ScalarMult(
+	// 		ThreeDTensor, ThreeDTensor,	-1.0f
+	// 	);
+	// 	printf("Full consecutive 3D tensor Negated\n");
+	// 	PrintTensor(ThreeDTensor);
 
-		OneTensorBroadcast(
-			ThreeDTensor, ThreeDTensor,	ScalarRelu
-		);
-		printf("Negated 3D tensor RELU\n");
-		PrintTensor(ThreeDTensor);
-		// TODO: test free
-	}
+	// 	OneTensorBroadcast(
+	// 		ThreeDTensor, ThreeDTensor,	ScalarRelu
+	// 	);
+	// 	printf("Negated 3D tensor RELU\n");
+	// 	PrintTensor(ThreeDTensor);
+	// 	// TODO: test free
+	// }
 
-	{
-		float_tensor* ThreeDTensor = NULL;
-		uint32_t Shape[3] = {5, 6, 7};
-		AllocAndInitTensor(&ThreeDTensor, 3, Shape);
-		FillConsecutive(ThreeDTensor);
-		printf("Full consecutive 3D tensor\n");
-		PrintTensor(ThreeDTensor);
+	// {
+	// 	float_tensor* ThreeDTensor = NULL;
+	// 	uint32_t Shape[3] = {5, 6, 7};
+	// 	AllocAndInitTensor(&ThreeDTensor, 3, Shape);
+	// 	FillConsecutive(ThreeDTensor);
+	// 	printf("Full consecutive 3D tensor\n");
+	// 	PrintTensor(ThreeDTensor);
 
-		uint32_t Pairs3[6] = {0, 2, 1, 3, 2, 4};
-		float_tensor SliceFrom3d = Slice(
-			ThreeDTensor, Pairs3, ARRAY_COUNT(Pairs3)
-		);
-		printf("[0:2][1:3][2:4] slice from consecutive\n");
-		PrintTensor(&SliceFrom3d);
-		ScalarMult(&SliceFrom3d, &SliceFrom3d, 2.0f);
-		printf("2.0f * [0:2][1:3][2:4] slice from consecutive\n");
-		PrintTensor(&SliceFrom3d);
-		ScalarAdd(&SliceFrom3d, &SliceFrom3d, 1.0f);
-		printf("2.0f * [0:2][1:3][2:4] + 1.0f slice from consecutive\n");
-		PrintTensor(&SliceFrom3d);
+	// 	uint32_t Pairs3[6] = {0, 2, 1, 3, 2, 4};
+	// 	float_tensor SliceFrom3d = Slice(
+	// 		ThreeDTensor, Pairs3, ARRAY_COUNT(Pairs3)
+	// 	);
+	// 	printf("[0:2][1:3][2:4] slice from consecutive\n");
+	// 	PrintTensor(&SliceFrom3d);
+	// 	ScalarMult(&SliceFrom3d, &SliceFrom3d, 2.0f);
+	// 	printf("2.0f * [0:2][1:3][2:4] slice from consecutive\n");
+	// 	PrintTensor(&SliceFrom3d);
+	// 	ScalarAdd(&SliceFrom3d, &SliceFrom3d, 1.0f);
+	// 	printf("2.0f * [0:2][1:3][2:4] + 1.0f slice from consecutive\n");
+	// 	PrintTensor(&SliceFrom3d);
 
-		printf("Full tensor final\n");
-		PrintTensor(ThreeDTensor);
-		// TODO: test free
-	}
+	// 	printf("Full tensor final\n");
+	// 	PrintTensor(ThreeDTensor);
+	// 	// TODO: test free
+	// }
 
-	{
-		float_tensor* ThreeDTensor = NULL;
-		uint32_t Shape[3] = {5, 6, 7};
-		AllocAndInitTensor(&ThreeDTensor, 3, Shape);
-		FillConsecutive(ThreeDTensor);
-		printf("Full consecutive 3D tensor\n");
-		PrintTensor(ThreeDTensor);
+	// {
+	// 	float_tensor* ThreeDTensor = NULL;
+	// 	uint32_t Shape[3] = {5, 6, 7};
+	// 	AllocAndInitTensor(&ThreeDTensor, 3, Shape);
+	// 	FillConsecutive(ThreeDTensor);
+	// 	printf("Full consecutive 3D tensor\n");
+	// 	PrintTensor(ThreeDTensor);
 
-		float_tensor* SmallThreeDTensor = NULL;
-		uint32_t Shape2[3] = {2, 2, 2};
-		AllocAndInitTensor(&SmallThreeDTensor, 3, Shape2);
-		FillConsecutive(SmallThreeDTensor);
-		printf("Small 3d tensor\n");
-		PrintTensor(SmallThreeDTensor);
+	// 	float_tensor* SmallThreeDTensor = NULL;
+	// 	uint32_t Shape2[3] = {2, 2, 2};
+	// 	AllocAndInitTensor(&SmallThreeDTensor, 3, Shape2);
+	// 	FillConsecutive(SmallThreeDTensor);
+	// 	printf("Small 3d tensor\n");
+	// 	PrintTensor(SmallThreeDTensor);
 
-		uint32_t Pairs[6] = {0, 2, 0, 2, 2, 4};
-		float_tensor SliceFrom3d = Slice(
-			ThreeDTensor, Pairs, ARRAY_COUNT(Pairs)
-		);
-		printf("[0:2][1:3][2:4] slice from consecutive\n");
-		PrintTensor(&SliceFrom3d);
+	// 	uint32_t Pairs[6] = {0, 2, 0, 2, 2, 4};
+	// 	float_tensor SliceFrom3d = Slice(
+	// 		ThreeDTensor, Pairs, ARRAY_COUNT(Pairs)
+	// 	);
+	// 	printf("[0:2][1:3][2:4] slice from consecutive\n");
+	// 	PrintTensor(&SliceFrom3d);
 
-		TwoTensorBroadcast(
-			SmallThreeDTensor,
-			&SliceFrom3d,
-			SmallThreeDTensor,
-			Add
-		);
+	// 	TwoTensorBroadcast(
+	// 		SmallThreeDTensor,
+	// 		&SliceFrom3d,
+	// 		SmallThreeDTensor,
+	// 		Add
+	// 	);
 
-		TwoTensorBroadcast(
-			SmallThreeDTensor,
-			SmallThreeDTensor,
-			SmallThreeDTensor,
-			Multiply
-		);
+	// 	TwoTensorBroadcast(
+	// 		SmallThreeDTensor,
+	// 		SmallThreeDTensor,
+	// 		SmallThreeDTensor,
+	// 		Multiply
+	// 	);
 
-		printf("Large tensor final\n");
-		PrintTensor(ThreeDTensor);
+	// 	printf("Large tensor final\n");
+	// 	PrintTensor(ThreeDTensor);
 
-		printf("Small tensor final\n");
-		PrintTensor(SmallThreeDTensor);
-		// TODO: test free
-	}
+	// 	printf("Small tensor final\n");
+	// 	PrintTensor(SmallThreeDTensor);
+	// 	// TODO: test free
+	// }
 
 	// // SECTION START: Matrix tests
 	// {

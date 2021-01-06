@@ -22,6 +22,12 @@ void AllocTensorFields(float_tensor* Tensor)
 	memset(Tensor->Shape, 0, sizeof(uint32_t));
 }
 
+void AllocTensorData(float_tensor* Tensor)
+{
+	uint32_t TotalElements = GetTotalElements(Tensor);
+	Tensor->Data = (float*) malloc(TotalElements * sizeof(float));
+}
+
 void AllocAndInitTensor(
 	float_tensor** Result, uint32_t DimCount, uint32_t* Shape
 )
@@ -40,9 +46,124 @@ void AllocAndInitTensor(
 		);
 	}
 
-	uint32_t TotalElements = GetTotalElements(Tensor);
-	Tensor->Data = (float*) malloc(TotalElements * sizeof(float));
+	AllocTensorData(Tensor);
+
 	*Result = Tensor;
+}
+
+// TODO: move to cpp file
+bool SaveTensor(float_tensor* Tensor, char* FilePath, size_t FilePathBufferSize)
+{
+	// NOTE: a way to save matrix data to a file for use in unit tests
+
+	// TODO: bounds checking for buffer size
+	assert(FilePathBufferSize != 0);
+
+	bool Result = true;
+
+	FILE* File = NULL;
+	fopen_s(&File, FilePath, "wb");
+	
+	tensor_header Header = {};
+	Header.DimCount = Tensor->DimCount;
+	size_t BytesWritten = fwrite(&Header, 1, sizeof(tensor_header), File);
+	if(BytesWritten != sizeof(tensor_header))
+	{
+		Result = false;
+		goto end;
+	}
+
+	BytesWritten = fwrite(
+		Tensor->Shape, Header.DimCount, sizeof(uint32_t), File
+	);
+	if(BytesWritten != (Header.DimCount * sizeof(uint32_t)))
+	{
+		Result = false;
+		goto end;
+	}
+
+	BytesWritten = fwrite(
+		Tensor->Strides, Header.DimCount, sizeof(uint32_t), File
+	);
+	if(BytesWritten != (Header.DimCount * sizeof(uint32_t)))
+	{
+		Result = false;
+		goto end;
+	}
+
+	size_t DataSize = GetTensorDataSize(Tensor);
+	BytesWritten = fwrite(Tensor->Data, 1, DataSize, File);
+	if(BytesWritten != DataSize)
+	{
+		Result = false;
+		goto end;
+	}
+
+end:
+	if(File != NULL)
+	{
+		fclose(File);
+	}
+
+	return Result;
+}
+
+// TODO: move to cpp file
+bool LoadTensor(float_tensor* Tensor, char* FilePath, size_t FilePathBufferSize)
+{
+	assert(FilePathBufferSize != 0);
+
+	bool Result = true;
+	FILE* File = NULL;
+	
+	size_t BytesRead = 0;
+	// TODO: error checking on open
+	fopen_s(&File, FilePath, "rb");
+
+	tensor_header Header = {}; 
+	BytesRead = fread(&Header, 1, sizeof(tensor_header), File);
+	if(BytesRead != sizeof(tensor_header))
+	{
+		Result = false;
+		goto end;
+	}
+	
+	Tensor->DimCount = Header.DimCount;
+	AllocTensorFields(Tensor);
+
+	BytesRead = fread(
+		Tensor->Shape, Tensor->DimCount, sizeof(*Tensor->Shape), File
+	);
+	if(BytesRead != (Tensor->DimCount * sizeof(*Tensor->Shape)))
+	{
+		Result = false;
+		goto end;
+	}
+
+	BytesRead = fread(
+		Tensor->Strides, Tensor->DimCount, sizeof(*Tensor->Strides), File
+	);
+	if(BytesRead != (Tensor->DimCount * sizeof(*Tensor->Strides)))
+	{
+		Result = false;
+		goto end;
+	}
+
+	AllocTensorData(Tensor);
+	uint32_t DataSize = GetTensorDataSize(Tensor);
+	BytesRead = fread(Tensor->Data, 1, DataSize, File);
+	if(BytesRead != DataSize)
+	{
+		Result = false;
+		goto end;
+	}
+
+end:
+	if(File != NULL)
+	{
+		fclose(File);
+	}
+	return Result;
 }
 
 float_tensor GetTensor(
