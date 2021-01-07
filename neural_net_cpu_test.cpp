@@ -209,6 +209,8 @@ int main(int argc, char* argv[])
 			"GetTensorFrom2dTensor0",
 			EndianString
 		);
+		PrintTensor(&Subtensor0);
+		SaveTensor(&Subtensor0, FilePathBuffer, FilePathBufferSize);
 		TestTensorResult(
 			&Subtensor0,
 			FilePathBuffer,
@@ -225,6 +227,8 @@ int main(int argc, char* argv[])
 			"GetTensorFrom2dTensor1",
 			EndianString
 		);
+		PrintTensor(&Subtensor1);
+		SaveTensor(&Subtensor1, FilePathBuffer, FilePathBufferSize);
 		TestTensorResult(
 			&Subtensor1,
 			FilePathBuffer,
@@ -241,6 +245,7 @@ int main(int argc, char* argv[])
 			"Get0dTensorFrom2dTensor",
 			EndianString
 		);
+		PrintTensor(&Subtensor2);
 		SaveTensor(&Subtensor2, FilePathBuffer, FilePathBufferSize);
 		TestTensorResult(
 			&Subtensor2,
@@ -257,6 +262,8 @@ int main(int argc, char* argv[])
 			"Transpose2dTensor",
 			EndianString
 		);
+		PrintTensor(&Transposed2d);
+		SaveTensor(&Transposed2d, FilePathBuffer, FilePathBufferSize);
 		TestTensorResult(
 			&Transposed2d,
 			FilePathBuffer,
@@ -274,6 +281,8 @@ int main(int argc, char* argv[])
 			"GetTensorFromTransposed0",
 			EndianString
 		);
+		PrintTensor(&Subtensor0OfTransposed);
+		SaveTensor(&Subtensor0OfTransposed, FilePathBuffer, FilePathBufferSize);
 		TestTensorResult(
 			&Subtensor0OfTransposed,
 			FilePathBuffer,

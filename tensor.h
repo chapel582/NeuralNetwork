@@ -281,6 +281,7 @@ void TwoTensorBroadcast(
 
 inline uint32_t GetTensorDataSize(float_tensor* Tensor)
 {
+	// NOTE: only works with contiguous memory
 	uint32_t Result = 1;
 	uint32_t* Shape = Tensor->Shape; 
 	for(uint32_t Index = 0; Index < Tensor->DimCount; Index++)

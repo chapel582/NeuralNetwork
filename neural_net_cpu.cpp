@@ -28,6 +28,17 @@ void AllocTensorData(float_tensor* Tensor)
 	Tensor->Data = (float*) malloc(TotalElements * sizeof(float));
 }
 
+void InitContiguousStrides(float_tensor* Tensor)
+{
+	Tensor->Strides[Tensor->DimCount - 1] = 1;
+	for(int32_t Index = Tensor->DimCount - 2; Index >= 0; Index--)
+	{
+		Tensor->Strides[Index] = (
+			Tensor->Strides[Index + 1] * Tensor->Shape[Index + 1]
+		);
+	}
+}
+
 void AllocAndInitTensor(
 	float_tensor** Result, uint32_t DimCount, uint32_t* Shape
 )
@@ -38,13 +49,7 @@ void AllocAndInitTensor(
 	
 	memcpy(Tensor->Shape, Shape, Tensor->DimCount * sizeof(uint32_t));
 
-	Tensor->Strides[Tensor->DimCount - 1] = 1;
-	for(int32_t Index = Tensor->DimCount - 2; Index >= 0; Index--)
-	{
-		Tensor->Strides[Index] = (
-			Tensor->Strides[Index + 1] * Tensor->Shape[Index + 1]
-		);
-	}
+	InitContiguousStrides(Tensor);
 
 	AllocTensorData(Tensor);
 
@@ -66,37 +71,40 @@ bool SaveTensor(float_tensor* Tensor, char* FilePath, size_t FilePathBufferSize)
 	
 	tensor_header Header = {};
 	Header.DimCount = Tensor->DimCount;
-	size_t BytesWritten = fwrite(&Header, 1, sizeof(tensor_header), File);
-	if(BytesWritten != sizeof(tensor_header))
+	size_t ElementsWritten = fwrite(&Header, sizeof(tensor_header), 1, File);
+	if(ElementsWritten != 1)
 	{
 		Result = false;
 		goto end;
 	}
 
-	BytesWritten = fwrite(
-		Tensor->Shape, Header.DimCount, sizeof(uint32_t), File
-	);
-	if(BytesWritten != (Header.DimCount * sizeof(uint32_t)))
+	if(Header.DimCount > 0)
 	{
-		Result = false;
-		goto end;
+		ElementsWritten = fwrite(
+			Tensor->Shape, sizeof(*Tensor->Shape), Header.DimCount, File
+		);
+		if(ElementsWritten != Header.DimCount)
+		{
+			Result = false;
+			goto end;
+		}
+
+		// NOTE: strides are not included in saved tensors 
+		// CONT: (since they are saved contiguously)
 	}
 
-	BytesWritten = fwrite(
-		Tensor->Strides, Header.DimCount, sizeof(uint32_t), File
-	);
-	if(BytesWritten != (Header.DimCount * sizeof(uint32_t)))
+	uint32_t TotalElements = GetTotalElements(Tensor);
+	for(uint32_t ElementIndex = 0; ElementIndex < TotalElements; ElementIndex++)
 	{
-		Result = false;
-		goto end;
-	}
-
-	size_t DataSize = GetTensorDataSize(Tensor);
-	BytesWritten = fwrite(Tensor->Data, 1, DataSize, File);
-	if(BytesWritten != DataSize)
-	{
-		Result = false;
-		goto end;
+		uint32_t Offset = GetTensorElementOffset(Tensor, ElementIndex);
+		ElementsWritten = fwrite(
+			Tensor->Data + Offset, sizeof(float), 1, File
+		);
+		if(ElementsWritten != 1)
+		{
+			Result = false;
+			goto end;
+		}
 	}
 
 end:
@@ -116,43 +124,39 @@ bool LoadTensor(float_tensor* Tensor, char* FilePath, size_t FilePathBufferSize)
 	bool Result = true;
 	FILE* File = NULL;
 	
-	size_t BytesRead = 0;
+	size_t ElementsRead = 0;
 	// TODO: error checking on open
 	fopen_s(&File, FilePath, "rb");
 
 	tensor_header Header = {}; 
-	BytesRead = fread(&Header, 1, sizeof(tensor_header), File);
-	if(BytesRead != sizeof(tensor_header))
+	ElementsRead = fread(&Header, sizeof(tensor_header), 1, File);
+	if(ElementsRead != 1)
 	{
 		Result = false;
 		goto end;
 	}
 	
 	Tensor->DimCount = Header.DimCount;
-	AllocTensorFields(Tensor);
-
-	BytesRead = fread(
-		Tensor->Shape, Tensor->DimCount, sizeof(*Tensor->Shape), File
-	);
-	if(BytesRead != (Tensor->DimCount * sizeof(*Tensor->Shape)))
+	if(Tensor->DimCount > 0)
 	{
-		Result = false;
-		goto end;
-	}
+		AllocTensorFields(Tensor);
 
-	BytesRead = fread(
-		Tensor->Strides, Tensor->DimCount, sizeof(*Tensor->Strides), File
-	);
-	if(BytesRead != (Tensor->DimCount * sizeof(*Tensor->Strides)))
-	{
-		Result = false;
-		goto end;
+		ElementsRead = fread(
+			Tensor->Shape, sizeof(*Tensor->Shape), Tensor->DimCount, File
+		);
+		if(ElementsRead != Tensor->DimCount)
+		{
+			Result = false;
+			goto end;
+		}
+
+		// NOTE: loaded tensors always have contiguous memory strides
+		InitContiguousStrides(Tensor);
 	}
 
 	AllocTensorData(Tensor);
-	uint32_t DataSize = GetTensorDataSize(Tensor);
-	BytesRead = fread(Tensor->Data, 1, DataSize, File);
-	if(BytesRead != DataSize)
+	ElementsRead = fread(Tensor->Data, GetTensorDataSize(Tensor), 1, File);
+	if(ElementsRead != 1)
 	{
 		Result = false;
 		goto end;
