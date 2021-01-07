@@ -258,6 +258,39 @@ float_tensor Slice(float_tensor* Tensor, uint32_t* Pairs, uint32_t PairsCount)
 	return Result;
 }
 
+void SmallMatrixMult(float_tensor* Result, float_tensor* T1, float_tensor* T2)
+{
+	assert(Result->DimCount == 2);
+	assert(T1->DimCount == 2);
+	assert(T2->DimCount == 2);
+	assert(T1->Shape[1] == T2->Shape[0]);
+	assert(Result->Shape[0] == T1->Shape[0]);
+	assert(Result->Shape[1] == T2->Shape[1]);
+
+	uint32_t Start = 0;
+	uint32_t ElementStride = 1;
+	uint32_t CommonDim = T1->Shape[1];
+	uint32_t ResultColumns = Result->Shape[1];
+	uint32_t NumResultElements = Result->Shape[0] * Result->Shape[1];
+	for(
+		uint32_t ResultIndex = Start; 
+		ResultIndex < NumResultElements;
+		ResultIndex += ElementStride 
+	)
+	{
+		uint32_t Row = ResultIndex / ResultColumns;
+		uint32_t Column = ResultIndex % ResultColumns;
+		float DotProduct = 0.0f;
+		for(uint32_t DpIndex = 0; DpIndex < CommonDim; DpIndex++)
+		{
+			DotProduct += (
+				GetElement(T1, Row, DpIndex) * 
+				GetElement(T2, DpIndex, Column)
+			);
+		}
+		SetElement(Result, DotProduct, Row, Column);
+	}
+}
 // TODO: Copy tensor
 
 void InitMatrix(matrix* Matrix, uint32_t NumRows, uint32_t NumColumns)

@@ -51,11 +51,8 @@ float GetElement(
 	return *Data;
 }
 
-float GetElement(float_tensor* Tensor, ...)
+float* GetElement(float_tensor* Tensor, va_list VarArgs)
 {
-	va_list VarArgs;
-	va_start(VarArgs, Tensor);
-
 	float* Data = Tensor->Data;
 	for(uint32_t CurrentDim = 0; CurrentDim < Tensor->DimCount; CurrentDim++)
 	{
@@ -65,7 +62,29 @@ float GetElement(float_tensor* Tensor, ...)
 
 	va_end(VarArgs);
 
-	return *Data;
+	return Data;
+}
+
+float* GetElementPtr(float_tensor* Tensor, ...)
+{
+	va_list VarArgs;
+	va_start(VarArgs, Tensor);
+	return GetElement(Tensor, VarArgs);
+}
+
+float GetElement(float_tensor* Tensor, ...)
+{
+	va_list VarArgs;
+	va_start(VarArgs, Tensor);
+	return *GetElementPtr(Tensor, VarArgs);
+}
+
+void SetElement(float_tensor* Tensor, float Value, ...)
+{
+	va_list VarArgs;
+	va_start(VarArgs, Value);
+	float* ElementPtr = GetElement(Tensor, VarArgs);
+	*ElementPtr = Value;
 }
 
 void PrintTensor(float_tensor* Tensor)
@@ -120,10 +139,22 @@ inline bool IsSameShape(float_tensor* Tensor1, float_tensor* Tensor2)
 	{
 		return false;
 	}
-	int Cmp = memcmp(
-		Tensor1->Shape, Tensor2->Shape, Tensor1->DimCount * sizeof(uint32_t)
-	);
-	return Cmp == 0;
+	else
+	{
+		if(Tensor1->DimCount == 0)
+		{
+			return true;
+		}
+		else
+		{
+			int Cmp = memcmp(
+				Tensor1->Shape,
+				Tensor2->Shape,
+				Tensor1->DimCount * sizeof(uint32_t)
+			);
+			return Cmp == 0;
+		}
+	}
 }
 
 uint32_t GetTensorElementOffset(float_tensor* Tensor, uint32_t ElementIndex)
