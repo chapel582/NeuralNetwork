@@ -91,6 +91,10 @@ void TestTensorResult(
 		printf("Got\n");
 		PrintTensor(T1);
 	}
+	else
+	{
+		printf("%s passed\n", TestName);
+	}
 
 	// TODO: free compareto data
 }
@@ -209,8 +213,6 @@ int main(int argc, char* argv[])
 			"GetTensorFrom2dTensor0",
 			EndianString
 		);
-		PrintTensor(&Subtensor0);
-		SaveTensor(&Subtensor0, FilePathBuffer, FilePathBufferSize);
 		TestTensorResult(
 			&Subtensor0,
 			FilePathBuffer,
@@ -227,8 +229,6 @@ int main(int argc, char* argv[])
 			"GetTensorFrom2dTensor1",
 			EndianString
 		);
-		PrintTensor(&Subtensor1);
-		SaveTensor(&Subtensor1, FilePathBuffer, FilePathBufferSize);
 		TestTensorResult(
 			&Subtensor1,
 			FilePathBuffer,
@@ -245,8 +245,6 @@ int main(int argc, char* argv[])
 			"Get0dTensorFrom2dTensor",
 			EndianString
 		);
-		PrintTensor(&Subtensor2);
-		SaveTensor(&Subtensor2, FilePathBuffer, FilePathBufferSize);
 		TestTensorResult(
 			&Subtensor2,
 			FilePathBuffer,
@@ -262,8 +260,6 @@ int main(int argc, char* argv[])
 			"Transpose2dTensor",
 			EndianString
 		);
-		PrintTensor(&Transposed2d);
-		SaveTensor(&Transposed2d, FilePathBuffer, FilePathBufferSize);
 		TestTensorResult(
 			&Transposed2d,
 			FilePathBuffer,
@@ -281,8 +277,6 @@ int main(int argc, char* argv[])
 			"GetTensorFromTransposed0",
 			EndianString
 		);
-		PrintTensor(&Subtensor0OfTransposed);
-		SaveTensor(&Subtensor0OfTransposed, FilePathBuffer, FilePathBufferSize);
 		TestTensorResult(
 			&Subtensor0OfTransposed,
 			FilePathBuffer,
@@ -317,7 +311,6 @@ int main(int argc, char* argv[])
 			"GetScalarFromTransposed0",
 			EndianString
 		);
-		SaveFloatResult(ScalarFromTranspose, FilePathBuffer);
 		TestFloatResult(
 			ScalarFromTranspose, FilePathBuffer, "GetScalarFromTransposed0"
 		);
@@ -366,21 +359,19 @@ int main(int argc, char* argv[])
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
 			TestDataDirectory,
-			"Slice2dTensor2",
+			"SliceFrom2dSlice",
 			EndianString
 		);
 		TestTensorResult(
-			&SliceFrom2d,
+			&SliceFromSlice,
 			FilePathBuffer,
 			FilePathBufferSize,
-			"Slice2dTensor2"
+			"SliceFrom2dSlice"
 		);
 
 		SliceFrom2d = Slice(
 			&Transposed2d, Pairs2, ARRAY_COUNT(Pairs2)
 		);
-		printf("[1:4][2:5] slice from transpose\n");
-		PrintTensor(&SliceFrom2d);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
