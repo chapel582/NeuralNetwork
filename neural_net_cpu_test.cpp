@@ -148,6 +148,10 @@ void TestFloatResult(
 	{
 		printf("Failure in %s\n", TestName);
 	}
+	else
+	{
+		printf("%s passed\n", TestName);
+	}
 }
 
 int main(int argc, char* argv[])
@@ -394,13 +398,9 @@ int main(int argc, char* argv[])
 		uint32_t Shape[3] = {5, 6, 7};
 		AllocAndInitTensor(&ThreeDTensor, 3, Shape);
 		FillConsecutive(ThreeDTensor);
-		printf("Full consecutive 3D tensor\n");
-		PrintTensor(ThreeDTensor);
 		
 		uint32_t ZeroIndex = 0;
 		float_tensor TwoDZeroth = GetTensor(ThreeDTensor, &ZeroIndex, 1);
-		printf("Zeroth 2D tensor\n");
-		PrintTensor(&TwoDZeroth);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -408,12 +408,15 @@ int main(int argc, char* argv[])
 			"Get2dFrom3d0",
 			EndianString
 		);
-		SaveTensor(&TwoDZeroth, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&TwoDZeroth,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"Get2dFrom3d0"
+		);
 		
 		uint32_t OneIndex = 1;
 		float_tensor TwoDFirst = GetTensor(ThreeDTensor, &OneIndex, 1);
-		printf("First 2d tensor\n");
-		PrintTensor(&TwoDFirst);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -421,12 +424,15 @@ int main(int argc, char* argv[])
 			"Get2dFrom3d1",
 			EndianString
 		);
-		SaveTensor(&TwoDFirst, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&TwoDFirst,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"Get2dFrom3d1"
+		);
 
 		uint32_t GetOneD[2] = {1, 2};
 		float_tensor OneDTensor = GetTensor(ThreeDTensor, GetOneD, 2);
-		printf("One-dimensional tensor\n");
-		PrintTensor(&OneDTensor);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -434,12 +440,15 @@ int main(int argc, char* argv[])
 			"Get1dFrom3d0",
 			EndianString
 		);
-		SaveTensor(&OneDTensor, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&OneDTensor,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"Get1dFrom3d0"
+		);
 
 		uint32_t GetElementIndices[3] = {1, 2, 3};
 		float_tensor ZeroD = GetTensor(ThreeDTensor, GetElementIndices, 3);
-		printf("Zero-dimensional tensor\n");
-		PrintTensor(&ZeroD);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -447,14 +456,17 @@ int main(int argc, char* argv[])
 			"Get0dFrom3d0",
 			EndianString
 		);
-		SaveTensor(&ZeroD, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&ZeroD,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"Get0dFrom3d0"
+		);
 
 		uint32_t ZeroDFromOneDIndex = 3;
 		float_tensor ZeroDFromOneD = GetTensor(
 			&OneDTensor, &ZeroDFromOneDIndex, 1
 		);
-		printf("Zero-dimensional tensor from one-dimensional tensor\n");
-		PrintTensor(&ZeroDFromOneD);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -462,11 +474,14 @@ int main(int argc, char* argv[])
 			"Get0dFrom1dFrom3d0",
 			EndianString
 		);
-		SaveTensor(&ZeroDFromOneD, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&ZeroDFromOneD,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"Get0dFrom1dFrom3d0"
+		);
 
 		float Scalar = GetElement(ThreeDTensor, GetElementIndices, 3);
-		printf("Scalar from 3d tensor\n");
-		printf("%f\n", Scalar);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -474,11 +489,9 @@ int main(int argc, char* argv[])
 			"GetScalarFrom3d0",
 			EndianString
 		);
-		SaveFloatResult(Scalar, FilePathBuffer);
+		TestFloatResult(Scalar, FilePathBuffer, "GetScalarFrom3d0");
 
 		Scalar = GetElement(ThreeDTensor, 1, 2, 3);
-		printf("Scalar from 3d tensor using variable args\n");
-		printf("%f\n", Scalar);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -486,11 +499,9 @@ int main(int argc, char* argv[])
 			"GetScalarFrom3dVarArgs",
 			EndianString
 		);
-		SaveFloatResult(Scalar, FilePathBuffer);
+		TestFloatResult(Scalar, FilePathBuffer, "GetScalarFrom3dVarArgs");
 
 		float_tensor Transposed3d = Transpose(ThreeDTensor, 0, 1);
-		printf("Transposed 3d tensor\n");
-		PrintTensor(&Transposed3d);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -498,13 +509,16 @@ int main(int argc, char* argv[])
 			"Transposed3d",
 			EndianString
 		);
-		SaveTensor(&Transposed3d, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&Transposed3d,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"Transposed3d"
+		);
 
 		float ScalarFromTranspose = GetElement(
 			&Transposed3d, GetElementIndices, 3
 		);
-		printf("Scalar from transposed 3d tensor\n");
-		printf("%f\n", ScalarFromTranspose);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -512,13 +526,13 @@ int main(int argc, char* argv[])
 			"ScalarFromTranspose",
 			EndianString
 		);
-		SaveFloatResult(ScalarFromTranspose, FilePathBuffer);
+		TestFloatResult(
+			ScalarFromTranspose, FilePathBuffer, "GetScalarFrom3dVarArgs"
+		);
 
 		float_tensor Subtensor0OfTransposed = GetTensor(
 			&Transposed3d, &ZeroIndex, 1
 		);
-		printf("Zeroth slice of transposed\n");
-		PrintTensor(&Subtensor0OfTransposed);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -526,13 +540,16 @@ int main(int argc, char* argv[])
 			"Subtensor0OfTransposed3d",
 			EndianString
 		);
-		SaveTensor(&Subtensor0OfTransposed, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&Subtensor0OfTransposed,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"Subtensor0OfTransposed3d"
+		);
 
 		float_tensor Subtensor1OfTransposed = GetTensor(
 			&Transposed3d, &OneIndex, 1
 		);
-		printf("First slice of transposed\n");
-		PrintTensor(&Subtensor1OfTransposed);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -540,14 +557,17 @@ int main(int argc, char* argv[])
 			"Subtensor1OfTransposed3d",
 			EndianString
 		);
-		SaveTensor(&Subtensor1OfTransposed, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&Subtensor1OfTransposed,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"Subtensor1OfTransposed3d"
+		);
 
 		uint32_t Pairs[6] = {0, 1, 0, 2, 0, 2};
 		float_tensor SliceFrom3d = Slice(
 			ThreeDTensor, Pairs, ARRAY_COUNT(Pairs)
 		);
-		printf("[0:1][0:2][0:2] slice from consecutive\n");
-		PrintTensor(&SliceFrom3d);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -555,14 +575,17 @@ int main(int argc, char* argv[])
 			"SliceOf3d0",
 			EndianString
 		);
-		SaveTensor(&SliceFrom3d, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&SliceFrom3d,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"SliceOf3d0"
+		);
 
 		uint32_t Pairs2[6] = {0, 2, 0, 2, 0, 2};
 		SliceFrom3d = Slice(
 			ThreeDTensor, Pairs2, ARRAY_COUNT(Pairs2)
 		);
-		printf("[0:2][0:2][0:2] slice from consecutive\n");
-		PrintTensor(&SliceFrom3d);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -570,14 +593,17 @@ int main(int argc, char* argv[])
 			"SliceOf3d1",
 			EndianString
 		);
-		SaveTensor(&SliceFrom3d, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&SliceFrom3d,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"SliceOf3d1"
+		);
 
 		uint32_t Pairs3[6] = {0, 2, 1, 3, 2, 4};
 		SliceFrom3d = Slice(
 			ThreeDTensor, Pairs3, ARRAY_COUNT(Pairs3)
 		);
-		printf("[0:2][1:3][2:4] slice from consecutive\n");
-		PrintTensor(&SliceFrom3d);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -585,13 +611,16 @@ int main(int argc, char* argv[])
 			"SliceOf3d2",
 			EndianString
 		);
-		SaveTensor(&SliceFrom3d, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&SliceFrom3d,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"SliceOf3d2"
+		);
 
 		SliceFrom3d = Slice(
 			&Transposed3d, Pairs2, ARRAY_COUNT(Pairs2)
 		);
-		printf("[0:2][0:2][0:2] slice from transposed\n");
-		PrintTensor(&SliceFrom3d);
 		GetTestResultFilePath(
 			FilePathBuffer,
 			sizeof(FilePathBuffer),
@@ -599,7 +628,12 @@ int main(int argc, char* argv[])
 			"SliceOfTransposed3d0",
 			EndianString
 		);
-		SaveTensor(&SliceFrom3d, FilePathBuffer, FilePathBufferSize);
+		TestTensorResult(
+			&SliceFrom3d,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"SliceOfTransposed3d0"
+		);
 		// TODO: test free
 	}
 

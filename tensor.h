@@ -51,7 +51,7 @@ float GetElement(
 	return *Data;
 }
 
-float* GetElement(float_tensor* Tensor, va_list VarArgs)
+float* GetElementVarArgs(float_tensor* Tensor, va_list VarArgs)
 {
 	float* Data = Tensor->Data;
 	for(uint32_t CurrentDim = 0; CurrentDim < Tensor->DimCount; CurrentDim++)
@@ -69,21 +69,21 @@ float* GetElementPtr(float_tensor* Tensor, ...)
 {
 	va_list VarArgs;
 	va_start(VarArgs, Tensor);
-	return GetElement(Tensor, VarArgs);
+	return GetElementVarArgs(Tensor, VarArgs);
 }
 
 float GetElement(float_tensor* Tensor, ...)
 {
 	va_list VarArgs;
 	va_start(VarArgs, Tensor);
-	return *GetElementPtr(Tensor, VarArgs);
+	return *GetElementVarArgs(Tensor, VarArgs);
 }
 
 void SetElement(float_tensor* Tensor, float Value, ...)
 {
 	va_list VarArgs;
 	va_start(VarArgs, Value);
-	float* ElementPtr = GetElement(Tensor, VarArgs);
+	float* ElementPtr = GetElementVarArgs(Tensor, VarArgs);
 	*ElementPtr = Value;
 }
 
