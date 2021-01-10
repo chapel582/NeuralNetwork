@@ -262,7 +262,50 @@ float_tensor Slice(float_tensor* Tensor, uint32_t* Pairs, uint32_t PairsCount)
 	return Result;
 }
 
-void SmallMatrixMult(float_tensor* Result, float_tensor* T1, float_tensor* T2)
+float_tensor Slice(float_tensor* Tensor, ...)
+{
+	// NOTE: slice returns a tensor that retains contiguous elements from the
+	// CONT: dimensions of a tensor, discarding the rest. This is done in-place
+	// CONT: with modifications to the stride data
+	va_list VarArgs;
+	va_start(VarArgs, Tensor);
+
+	float_tensor Result = {};
+	Result.DimCount = Tensor->DimCount;
+	AllocTensorFields(&Result);
+	
+	for(uint32_t Index = 0; Index < Result.DimCount; Index++)
+	{
+		uint32_t Next = va_arg(VarArgs, uint32_t);
+		uint32_t NextPlusOne = va_arg(VarArgs, uint32_t);
+		Result.Shape[Index] = NextPlusOne - Next;
+	}
+	va_end(VarArgs);
+
+	for(uint32_t Index = 0; Index < Result.DimCount; Index++)
+	{
+		Result.Strides[Index] = Tensor->Strides[Index];
+	}
+
+	va_start(VarArgs, Tensor);
+	Result.Data = Tensor->Data;
+	for(uint32_t CurrentDim = 0; CurrentDim < Tensor->DimCount; CurrentDim++)
+	{
+		uint32_t Next = va_arg(VarArgs, uint32_t);
+		uint32_t NextPlusOne = va_arg(VarArgs, uint32_t);
+		Result.Data += Pairs[2 * CurrentDim] * Tensor->Strides[CurrentDim];
+	}
+	va_end(VarArgs);
+
+	return Result;
+}
+
+void SmallMatrixMult(
+	float_tensor* Result,
+	float_tensor* T1,
+	float_tensor* T2,
+	uint32_t Start
+)
 {
 	assert(Result->DimCount == 2);
 	assert(T1->DimCount == 2);
@@ -271,7 +314,6 @@ void SmallMatrixMult(float_tensor* Result, float_tensor* T1, float_tensor* T2)
 	assert(Result->Shape[0] == T1->Shape[0]);
 	assert(Result->Shape[1] == T2->Shape[1]);
 
-	uint32_t Start = 0;
 	uint32_t ElementStride = 1;
 	uint32_t CommonDim = T1->Shape[1];
 	uint32_t ResultColumns = Result->Shape[1];
@@ -293,6 +335,68 @@ void SmallMatrixMult(float_tensor* Result, float_tensor* T1, float_tensor* T2)
 			);
 		}
 		SetElement(Result, DotProduct, Row, Column);
+	}
+}
+
+void BlockMatrixMult(
+	float_tensor* Result,
+	float_tensor* T1,
+	uint32_t T1BlockWidth,
+	float_tensor* T2,
+	uint32_t T2BlockHeight,
+	uint32_t CommonDim,
+	uint32_t Start,
+	uint32_t BlockStride,
+	float_tensor* BlockResult,
+	float_tensor* BlockMultResult
+)
+{
+	assert(Result->DimCount == 2);
+	assert(T1->DimCount == 2);
+	assert(T2->DimCount == 2);
+	assert(T1->Shape[1] == T2->Shape[0]);
+	assert(Result->Shape[0] == T1->Shape[0]);
+	assert(Result->Shape[1] == T2->Shape[1]);
+
+	uint32_t Start = 0;
+	uint32_t ElementStride = 1;
+	for(
+		uint32_t BlockResultIndex = Start; 
+		BlockResultIndex < NumResultElements;
+		BlockResultIndex += BlockStride 
+	)
+	{
+		uint32_t BlockRowIndex = BlockResultIndex / ResultColumns;
+		uint32_t BlockColumnIndex = ResultIndex % ResultColumns;
+		float DotProduct = 0.0f;
+		for(uint32_t DpIndex = 0; DpIndex < CommonDim; DpIndex++)
+		{
+			// float_tensor Block1 = (
+			// 	m1[row * s + index * s:row * s + (index + 1) * s ]
+			// 	[col * s + index * s:col * s + (index + 1) * s]
+			// );
+			float_tensor Block1 = Slice(
+				T1,
+				BlockRowIndex * CommonDim,
+				DpIndex * T1BlockWidth
+			);
+			// float_tensor Block2 = (
+			// 	m2[col * s + index * s:col * s + (index + 1) * s ]
+			// 	[row * s + index * s:row * s + (index + 1) * s]
+			// );
+			float_tensor Block2 = Slice(
+				T2,
+				DpIndex * T2BlockHeight,
+				BlockColumnIndex * CommonDim
+			);
+			SmallMatrixMult(BlockMultResult, Block1, Block2);
+			TwoTensorBroadcast(
+				&BlockResult,
+				BlockResult,
+				BlockMultResult,
+				AddScalars
+			);
+		}
 	}
 }
 // TODO: Copy tensor
