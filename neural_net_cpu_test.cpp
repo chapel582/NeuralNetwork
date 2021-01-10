@@ -827,6 +827,39 @@ int main(int argc, char* argv[])
 		// TODO: test free
 	}
 
+	{
+		float_tensor* T0 = NULL;
+		uint32_t Shape0[2] = {3, 3};
+		AllocAndInitTensor(&T0, 2, Shape0);
+		FillConsecutive(T0);
+		
+		float_tensor* T1 = NULL;
+		uint32_t Shape1[2] = {3, 3};
+		AllocAndInitTensor(&T1, 2, Shape1);
+		FillConsecutive(T1);
+
+		float_tensor* Result = NULL;
+		uint32_t ResultShape[2] = {3, 3};
+		AllocAndInitTensor(&Result, 2, ResultShape);
+
+		SmallMatrixMult(Result, T0, T1);
+		GetTestResultFilePath(
+			FilePathBuffer,
+			sizeof(FilePathBuffer),
+			TestDataDirectory,
+			"SmallMatrixMult",
+			EndianString
+		);
+		TestTensorResult(
+			Result,
+			FilePathBuffer,
+			FilePathBufferSize,
+			"SmallMatrixMult"
+		);
+
+		// TODO: test free
+	}
+
 	// // SECTION START: Matrix tests
 	// {
 	// 	matrix* M1;
