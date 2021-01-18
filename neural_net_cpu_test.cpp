@@ -873,6 +873,158 @@ int main(int argc, char* argv[])
 		PrintTensor(Result);
 	}
 
+	{
+		// NOTE: non-square result, square blocks
+		float_tensor* T0 = NULL;
+		uint32_t Shape0[2] = {6, 4};
+		AllocAndInitTensor(&T0, 2, Shape0);
+		FillConsecutive(T0);
+		
+		float_tensor* T1 = NULL;
+		uint32_t Shape1[2] = {4, 4};
+		AllocAndInitTensor(&T1, 2, Shape1);
+		FillConsecutive(T1);
+
+		PrintTensor(T0);
+		PrintTensor(T1);
+
+		float_tensor* Result = NULL;
+		uint32_t Shape2[2] = {6, 4};
+		AllocAndInitTensor(&Result, 2, Shape2);
+
+		float_tensor* InnerProductResult = NULL;
+		uint32_t Shape3[2] = {2, 2};
+		AllocAndInitTensor(&InnerProductResult, 2, Shape3);
+
+		float_tensor* MultResult = NULL;
+		uint32_t Shape4[2] = {2, 2};
+		AllocAndInitTensor(&MultResult, 2, Shape4);
+
+		BlockMatrixMult(
+			Result,
+			T0,
+			T1,
+			2,
+			InnerProductResult,
+			MultResult
+		);
+		PrintTensor(Result);
+	}
+
+	{
+		// NOTE: non-square result, square blocks
+		float_tensor* T0 = NULL;
+		uint32_t Shape0[2] = {4, 4};
+		AllocAndInitTensor(&T0, 2, Shape0);
+		FillConsecutive(T0);
+		
+		float_tensor* T1 = NULL;
+		uint32_t Shape1[2] = {4, 6};
+		AllocAndInitTensor(&T1, 2, Shape1);
+		FillConsecutive(T1);
+
+		PrintTensor(T0);
+		PrintTensor(T1);
+
+		float_tensor* Result = NULL;
+		uint32_t Shape2[2] = {4, 6};
+		AllocAndInitTensor(&Result, 2, Shape2);
+
+		float_tensor* InnerProductResult = NULL;
+		uint32_t Shape3[2] = {2, 2};
+		AllocAndInitTensor(&InnerProductResult, 2, Shape3);
+
+		float_tensor* MultResult = NULL;
+		uint32_t Shape4[2] = {2, 2};
+		AllocAndInitTensor(&MultResult, 2, Shape4);
+
+		BlockMatrixMult(
+			Result,
+			T0,
+			T1,
+			2,
+			InnerProductResult,
+			MultResult
+		);
+		PrintTensor(Result);
+	}
+
+	{
+		// NOTE: non-square result, non-square blocks
+		float_tensor* T0 = NULL;
+		uint32_t Shape0[2] = {6, 4};
+		AllocAndInitTensor(&T0, 2, Shape0);
+		FillConsecutive(T0);
+		
+		float_tensor* T1 = NULL;
+		uint32_t Shape1[2] = {4, 4};
+		AllocAndInitTensor(&T1, 2, Shape1);
+		FillConsecutive(T1);
+
+		PrintTensor(T0);
+		PrintTensor(T1);
+
+		float_tensor* Result = NULL;
+		uint32_t Shape2[2] = {6, 4};
+		AllocAndInitTensor(&Result, 2, Shape2);
+
+		float_tensor* InnerProductResult = NULL;
+		uint32_t Shape3[2] = {3, 2};
+		AllocAndInitTensor(&InnerProductResult, 2, Shape3);
+
+		float_tensor* MultResult = NULL;
+		uint32_t Shape4[2] = {3, 2};
+		AllocAndInitTensor(&MultResult, 2, Shape4);
+
+		BlockMatrixMult(
+			Result,
+			T0,
+			T1,
+			2,
+			InnerProductResult,
+			MultResult
+		);
+		PrintTensor(Result);
+	}
+
+	{
+		// NOTE: non-square result, non-square blocks
+		float_tensor* T0 = NULL;
+		uint32_t Shape0[2] = {4, 4};
+		AllocAndInitTensor(&T0, 2, Shape0);
+		FillConsecutive(T0);
+		
+		float_tensor* T1 = NULL;
+		uint32_t Shape1[2] = {4, 6};
+		AllocAndInitTensor(&T1, 2, Shape1);
+		FillConsecutive(T1);
+
+		PrintTensor(T0);
+		PrintTensor(T1);
+
+		float_tensor* Result = NULL;
+		uint32_t Shape2[2] = {4, 6};
+		AllocAndInitTensor(&Result, 2, Shape2);
+
+		float_tensor* InnerProductResult = NULL;
+		uint32_t Shape3[2] = {2, 3};
+		AllocAndInitTensor(&InnerProductResult, 2, Shape3);
+
+		float_tensor* MultResult = NULL;
+		uint32_t Shape4[2] = {2, 3};
+		AllocAndInitTensor(&MultResult, 2, Shape4);
+
+		BlockMatrixMult(
+			Result,
+			T0,
+			T1,
+			2,
+			InnerProductResult,
+			MultResult
+		);
+		PrintTensor(Result);
+	}
+
 	// // SECTION START: Matrix tests
 	// {
 	// 	matrix* M1;
