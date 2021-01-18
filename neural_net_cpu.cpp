@@ -374,6 +374,7 @@ void BlockMatrixMultInnerLoop(
 	uint32_t CommonDimIndexStride
 )
 {
+	// TODO: inlined?
 	SetTensorElements(InnerProductResult, 0.0f);
 	uint32_t Block1RowStart = Row * T1BlockRowCount;
 	uint32_t Block1RowEnd = (Row + 1) * T1BlockRowCount;
@@ -385,11 +386,6 @@ void BlockMatrixMultInnerLoop(
 		CommonDimIndex += CommonDimIndexStride
 	)
 	{
-		// TODO: inlined?
-		// float_tensor Block1 = (
-		// 	m1[row * s + index * s:row * s + (index + 1) * s ]
-		// 	[col * s + index * s:col * s + (index + 1) * s]
-		// );
 		float_tensor Block1 = Slice(
 			T1,
 			Block1RowStart,
@@ -397,12 +393,6 @@ void BlockMatrixMultInnerLoop(
 			CommonDimIndex * CommonDim,
 			(CommonDimIndex + 1) * CommonDim
 		);
-		// printf("Block1\n");
-		// PrintTensor(&Block1);
-		// float_tensor Block2 = (
-		// 	m2[col * s + index * s:col * s + (index + 1) * s ]
-		// 	[row * s + index * s:row * s + (index + 1) * s]
-		// );
 		float_tensor Block2 = Slice(
 			T2,
 			CommonDimIndex * CommonDim,
@@ -410,17 +400,13 @@ void BlockMatrixMultInnerLoop(
 			Block2ColumnStart,
 			Block2ColumnEnd
 		);
-		// printf("Block2\n");
-		// PrintTensor(&Block2);
 		SmallMatrixMult(MultResult, &Block1, &Block2);
-		// PrintTensor(MultResult);
 		TwoTensorBroadcast(
 			InnerProductResult,
 			InnerProductResult,
 			MultResult,
 			Add
 		);
-		// PrintTensor(InnerProductResult);	
 	}
 	float_tensor ResultSlice = Slice(
 		Result,
