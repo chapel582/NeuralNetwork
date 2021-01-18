@@ -211,6 +211,38 @@ void ScalarAdd(float_tensor* Result, float_tensor* Input, float Scalar)
 
 typedef float float_to_float_function(float Arg);
 
+void SetTensorElements(float_tensor* Input, float Value)
+{
+	uint32_t TotalElements = GetTotalElements(Input);
+	for(
+		uint32_t ElementIndex = 0;
+		ElementIndex < TotalElements;
+		ElementIndex++
+	)
+	{
+		uint32_t Offset = GetTensorElementOffset(Input, ElementIndex);
+		Input->Data[Offset] = Value;
+	}
+}
+
+void CopyTensorElements(float_tensor* Destination, float_tensor* Source)
+{
+	assert(IsSameShape(Destination, Source));
+	uint32_t TotalElements = GetTotalElements(Source);
+	for(
+		uint32_t ElementIndex = 0;
+		ElementIndex < TotalElements;
+		ElementIndex++
+	)
+	{
+		uint32_t SourceOffset = GetTensorElementOffset(Source, ElementIndex);
+		uint32_t DestinationOffset = GetTensorElementOffset(
+			Destination, ElementIndex
+		);
+		Destination->Data[DestinationOffset] = Source->Data[SourceOffset];
+	}
+}
+
 void OneTensorBroadcast(
 	float_tensor* Result,
 	float_tensor* Input,
