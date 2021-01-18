@@ -17,29 +17,6 @@
 
 #include "tensor.h"
 
-float ScalarRelu(float Input)
-{
-	// TODO: move to common area?
-	if(Input >= 0)
-	{
-		return Input;
-	}
-	else
-	{
-		return 0;
-	}
-}
-
-float Add(float Arg1, float Arg2)
-{
-	return Arg1 + Arg2;
-}
-
-float Multiply(float Arg1, float Arg2)
-{
-	return Arg1 * Arg2;
-}
-
 void FillConsecutive(float_tensor* Tensor)
 {
 	// NOTE: assumes memory is contiguous
@@ -893,6 +870,7 @@ int main(int argc, char* argv[])
 			InnerProductResult,
 			MultResult
 		);
+		PrintTensor(Result);
 	}
 
 	// // SECTION START: Matrix tests
