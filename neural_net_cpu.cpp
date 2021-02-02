@@ -493,6 +493,78 @@ void BlockMatrixMult(
 		}
 	}
 }
+
+void BlockMatrixMultThreaded(
+	float_tensor* Result,
+	float_tensor* T1,
+	float_tensor* T2,
+	uint32_t CommonDim,
+	float_tensor* InnerProductResults,
+	float_tensor* MultResults
+)
+{
+	assert(Result->DimCount == 2);
+	assert(T1->DimCount == 2);
+	assert(T2->DimCount == 2);
+	assert(T1->Shape[1] == T2->Shape[0]);
+	assert(Result->Shape[0] == T1->Shape[0]);
+	assert(Result->Shape[1] == T2->Shape[1]);
+
+	uint32_t T1BlockRowCount = InnerProductResults[0].Shape[0];
+	uint32_t T2BlockColumnCount = InnerProductResults[0].Shape[1];
+	assert(MultResults[0].Shape[0] == T1BlockRowCount);
+	assert(MultResults[0].Shape[1] == T2BlockColumnCount);
+
+	uint32_t BlockRowCount = Result->Shape[0] / T1BlockRowCount;
+	uint32_t BlockColumnCount = Result->Shape[1] / T2BlockColumnCount;
+
+	if(T1->Shape[0] > T2->Shape[1])
+	{
+		for(uint32_t Column = 0; Column < BlockColumnCount; Column++)
+		{
+			for(uint32_t Row = 0; Row < BlockRowCount; Row++)	
+			{
+				for(
+					uint32_t ThreadIndex = 0;
+					ThreadIndex < ThreadCount;
+					ThreadIndex++
+				)
+				{
+					uint32_t CommonDimIndexStart = ThreadIndex;
+					uint32_t CommonDimIndexStride = ThreadCount;
+					float_tensor* InnerProductResults = (
+						&InnerProductResults[ThreadIndex]
+					);
+					float_tensor* MultResult = &MultResults[ThreadIndex];
+					BlockMatrixMultInnerLoop(
+						Result,
+						T1,
+						T2,
+						T1BlockRowCount,
+						T2BlockColumnCount,
+						Row,
+						Column,
+						CommonDim,
+						InnerProductResult,
+						MultResult,
+						CommonDimIndexStart,
+						CommonDimIndexStride
+					);
+				}
+			}
+		}
+	}
+	else
+	{
+		for(uint32_t Row = 0; Row < BlockRowCount; Row++)
+		{
+			for(uint32_t Column = 0; Column < BlockColumnCount; Column++)
+			{
+				
+			}
+		}
+	}
+}
 // TODO: Copy tensor
 
 void InitMatrix(matrix* Matrix, uint32_t NumRows, uint32_t NumColumns)
